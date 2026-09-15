@@ -1,91 +1,53 @@
-import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
-import { logger } from './logger.js';
 
-// Setup email transporter using environment variables
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS, // Use App Password if using Gmail
-  },
-});
+const logger = console;
 
-/**
- * Generate a cryptographically secure numeric OTP
- */
-export function generateOtp(length = 6) {
-  const min = 10 ** (length - 1);
-  const max = 10 ** length - 1;
-  return crypto.randomInt(min, max + 1).toString();
-}
-
-/**
- * Dispatch OTP via SMS
- */
-async function sendSmsOtp(phoneNumber, otp) {
-  if (process.env.NODE_ENV !== 'production' && !process.env.TWILIO_SID) {
-    logger.info(`[DEV MOCK SMS] OTP for ${phoneNumber}: ${otp}`);
-    return { success: true, provider: 'mock' };
-  }
-
-  // Example real provider (e.g. Twilio)
-  /*
-  import twilio from 'twilio';
-  const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
-  await client.messages.create({
-    body: `Your verification code is: ${otp}. It expires in 5 minutes.`,
-    from: process.env.TWILIO_PHONE_NUMBER,
-    to: phoneNumber,
-  });
-  */
-
-  logger.info(`SMS OTP dispatched to ${phoneNumber}`);
-  return { success: true, provider: 'sms-gateway' };
-}
-
-/**
- * Dispatch OTP via Email
- */
-async function sendEmailOtp(email, otp) {
-  // If credentials are missing in dev, log the code instead of failing
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    logger.info(`[DEV MOCK EMAIL] OTP for ${email}: ${otp}`);
-    return { success: true, provider: 'mock' };
-  }
-
-  await transporter.sendMail({
-    from: `"Support Team" <${process.env.SMTP_USER}>`,
-    to: email,
-    subject: 'Your One-Time Password (OTP)',
-    text: `Your OTP is ${otp}. It will expire in 5 minutes.`,
-    html: `<b>Your OTP is: <span style="font-size: 20px; color: #2563eb;">${otp}</span></b><p>Valid for 5 minutes.</p>`,
-  });
-
-  logger.info(`Email OTP dispatched successfully to ${email}`);
-  return { success: true, provider: 'nodemailer' };
-}
-
-/**
- * Main dispatcher
- */
-export async function sendOtp({ channel, recipient, otp }) {
-  const code = otp || generateOtp(6);
-
+export const sendOtp = async (req, res, next) => {
   try {
-    if (channel === 'sms') {
-      await sendSmsOtp(recipient, code);
-    } else if (channel === 'email') {
-      await sendEmailOtp(recipient, code);
-    } else {
-      throw new Error(`Unsupported notification channel: "${channel}"`);
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
     }
 
-    return { success: true, otp: code };
+    // Generate a 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Check if email credentials exist in .env
+    const hasEmailConfig = process.env.EMAIL_USER && process.env.EMAIL_PASS;
+
+    if (hasEmailConfig) {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      });
+
+      await transporter.sendMail({
+        from: `"FlexiBook" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Your FlexiBook Verification Code',
+        text: `Your OTP verification code is: ${otp}`,
+        html: `<b>Your OTP verification code is: <h2>${otp}</h2></b>`,
+      });
+
+      logger.log(`[OTP] Sent email to ${email}`);
+    } else {
+      // Development mode fallback
+      logger.log(`\n============================`);
+      logger.log(`[DEV MODE] OTP for ${email}: ${otp}`);
+      logger.log(`============================\n`);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'OTP sent successfully',
+      devOtp: !hasEmailConfig ? otp : undefined,
+    });
   } catch (error) {
-    logger.error(`Failed to dispatch OTP to ${recipient}: ${error.message}`);
-    throw error;
+    logger.error('Error in sendOtp:', error);
+    next(error);
   }
-}
+};

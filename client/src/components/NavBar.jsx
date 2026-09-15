@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { FaUser, FaTicketAlt, FaSignOutAlt } from "react-icons/fa";
+import { Sparkles, Menu, X } from "lucide-react";
 import profile from "../assets/profile.jpg";
 
 const NavBar = () => {
@@ -11,11 +12,21 @@ const NavBar = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isHome = location.pathname === "/";
-
-  // Check auth helper
+  // Robust auth status resolver
   const getAuthStatus = useCallback(() => {
-    const isAuth =
+    const rawToken =
+      localStorage.getItem("token") ||
+      localStorage.getItem("authToken") ||
+      sessionStorage.getItem("token") ||
+      sessionStorage.getItem("authToken");
+
+    const hasValidToken =
+      Boolean(rawToken) &&
+      rawToken !== "undefined" &&
+      rawToken !== "null" &&
+      rawToken.trim() !== "";
+
+    const isExplicitAuth =
       sessionStorage.getItem("isAuthenticated") === "true" ||
       localStorage.getItem("isAuthenticated") === "true";
 
@@ -23,20 +34,34 @@ const NavBar = () => {
       sessionStorage.getItem("userRole") === "guest" ||
       localStorage.getItem("userRole") === "guest";
 
-    const storedEmail =
+    let storedEmail =
       sessionStorage.getItem("userEmail") ||
-      localStorage.getItem("userEmail") ||
-      (isGuest ? "Guest User" : "User");
+      localStorage.getItem("userEmail");
+
+    if (!storedEmail) {
+      try {
+        const rawUser =
+          localStorage.getItem("user") ||
+          localStorage.getItem("currentUser") ||
+          sessionStorage.getItem("user");
+        if (rawUser) {
+          const parsed = JSON.parse(rawUser);
+          storedEmail = parsed.email || parsed.name || parsed.fullName;
+        }
+      } catch {
+        storedEmail = null;
+      }
+    }
 
     return {
-      isLoggedIn: isAuth || isGuest,
-      userEmail: storedEmail,
+      isLoggedIn: hasValidToken || isExplicitAuth || isGuest,
+      userEmail: storedEmail || (isGuest ? "Guest User" : "Account"),
     };
   }, []);
 
   const [authState, setAuthState] = useState(getAuthStatus);
 
-  // Sync auth on route change, custom authChange event, and cross-tab storage updates
+  // Sync auth across routing changes and multi-tab storage triggers
   useEffect(() => {
     const syncAuth = () => {
       setAuthState(getAuthStatus());
@@ -55,7 +80,6 @@ const NavBar = () => {
 
   const { isLoggedIn, userEmail } = authState;
 
-  // Helper to close menus
   const closeMenu = () => {
     setIsOpen(false);
     setIsProfileMenuOpen(false);
@@ -72,54 +96,58 @@ const NavBar = () => {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  // Logout handler
+  // Complete cleanup on logout to prevent account cross-contamination
   const handleLogout = () => {
     sessionStorage.clear();
-    localStorage.removeItem("isAuthenticated");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userRole");
 
-    // Inform all components that authentication has cleared
+    const authKeys = [
+      "token",
+      "authToken",
+      "user",
+      "currentUser",
+      "isAuthenticated",
+      "userEmail",
+      "userRole",
+      "role",
+    ];
+    authKeys.forEach((key) => localStorage.removeItem(key));
+
     window.dispatchEvent(new Event("authChange"));
+    window.dispatchEvent(new Event("storage"));
 
-    setAuthState({ isLoggedIn: false, userEmail: "User" });
+    setAuthState({ isLoggedIn: false, userEmail: "Account" });
     closeMenu();
     navigate("/login", { replace: true });
   };
 
   return (
-    <header
-      className={`top-0 left-0 w-full z-50 transition-colors duration-300 ${
-        isHome
-          ? "absolute"
-          : "sticky bg-[#F8FAFC]/80 backdrop-blur-md border-b border-slate-200/60 shadow-sm"
-      }`}
-    >
-      <nav className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-8 py-4">
+    <header className="sticky top-0 left-0 w-full z-50 bg-[#07090e]/95 backdrop-blur-md border-b border-white/[0.04] font-sans transition-all duration-300">
+      <nav className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-8 py-3">
         {/* Brand Logo */}
         <NavLink
           to="/"
           onClick={closeMenu}
-          className={`text-2xl sm:text-3xl font-bold tracking-tight ${
-            isHome ? "text-white" : "text-[#0F4C81]"
-          }`}
+          className="flex items-center gap-2 group cursor-pointer"
         >
-          FlexiBook
+          <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-400/30 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform shadow-[0_0_12px_rgba(56,189,248,0.2)]">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <span className="text-xl sm:text-2xl font-black tracking-tight text-white group-hover:text-sky-300 transition-colors">
+            Flexi<span className="text-[#38bdf8]">Book</span>
+          </span>
         </NavLink>
 
         {/* Desktop Navigation Links */}
-        <ul
-          className={`hidden md:flex items-center gap-8 lg:gap-10 font-medium ${
-            isHome ? "text-white" : "text-gray-700"
-          }`}
-        >
+        <ul className="hidden md:flex items-center gap-7 lg:gap-10 text-xs font-bold tracking-widest uppercase">
           <li>
             <NavLink
               to="/"
               className={({ isActive }) =>
-                isActive
-                  ? `border-b-2 ${isHome ? "border-white" : "border-blue-600"} pb-1`
-                  : "hover:text-blue-500 transition-colors"
+                `transition-all duration-200 pb-1 ${
+                  isActive
+                    ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
               }
             >
               Home
@@ -128,11 +156,13 @@ const NavBar = () => {
 
           <li>
             <NavLink
-              to="/browsing"
+              to="/browse"
               className={({ isActive }) =>
-                isActive
-                  ? `border-b-2 ${isHome ? "border-white" : "border-blue-600"} pb-1`
-                  : "hover:text-blue-500 transition-colors"
+                `transition-all duration-200 pb-1 ${
+                  isActive
+                    ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
               }
             >
               Browse
@@ -143,9 +173,11 @@ const NavBar = () => {
             <NavLink
               to="/booking"
               className={({ isActive }) =>
-                isActive
-                  ? `border-b-2 ${isHome ? "border-white" : "border-blue-600"} pb-1`
-                  : "hover:text-blue-500 transition-colors"
+                `transition-all duration-200 pb-1 ${
+                  isActive
+                    ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
               }
             >
               My Booking
@@ -156,9 +188,11 @@ const NavBar = () => {
             <NavLink
               to="/help"
               className={({ isActive }) =>
-                isActive
-                  ? `border-b-2 ${isHome ? "border-white" : "border-blue-600"} pb-1`
-                  : "hover:text-blue-500 transition-colors"
+                `transition-all duration-200 pb-1 ${
+                  isActive
+                    ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
               }
             >
               Help
@@ -166,7 +200,7 @@ const NavBar = () => {
           </li>
         </ul>
 
-        {/* Right Section (Auth / Profile Dropdown + Hamburger) */}
+        {/* Right Section */}
         <div className="flex items-center gap-3 sm:gap-4">
           {isLoggedIn ? (
             /* Logged-in view: Avatar with Dropdown */
@@ -174,75 +208,71 @@ const NavBar = () => {
               <button
                 type="button"
                 onClick={() => setIsProfileMenuOpen((prev) => !prev)}
-                className="inline-block rounded-full transition-transform hover:scale-105 cursor-pointer focus:outline-none"
+                className="inline-block rounded-full p-0.5 border border-sky-400/40 hover:border-sky-400 transition-transform hover:scale-105 cursor-pointer focus:outline-none"
                 aria-label="Open profile options"
               >
                 <img
                   src={profile}
                   alt="Profile"
-                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover ${
-                    isHome ? "border-2 border-white" : "border border-gray-300"
-                  } ${isProfileMenuOpen ? "ring-2 ring-amber-500 ring-offset-2" : ""}`}
+                  className={`w-9 h-9 sm:w-9.5 sm:h-9.5 rounded-full object-cover ${
+                    isProfileMenuOpen ? "ring-2 ring-sky-400 ring-offset-2 ring-offset-[#07090e]" : ""
+                  }`}
                 />
               </button>
 
               {/* Profile Dropdown Menu */}
               {isProfileMenuOpen && (
-                <div className="absolute right-0 mt-3 w-52 bg-[#F8FAFC]/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 py-2 z-50 text-gray-800">
-                  <div className="px-4 py-2 border-b border-gray-100">
-                    <p className="text-[10px] uppercase font-bold text-gray-400">Account</p>
-                    <p className="text-xs font-semibold text-gray-800 truncate">{userEmail}</p>
+                <div className="absolute right-0 mt-3 w-56 bg-[#0f1420]/95 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 py-2.5 z-50 text-slate-200">
+                  <div className="px-4 py-2 border-b border-white/5">
+                    <p className="text-[10px] uppercase font-bold text-sky-400 tracking-wider">Account</p>
+                    <p className="text-xs font-semibold text-white truncate mt-0.5">{userEmail}</p>
                   </div>
 
                   <NavLink
                     to="/profile"
                     onClick={closeMenu}
-                    className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-white/60 transition"
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition"
                   >
-                    <FaUser className="text-gray-400 text-xs" /> My Profile
+                    <FaUser className="text-sky-400 text-xs" /> My Profile
                   </NavLink>
 
                   <NavLink
                     to="/booking"
                     onClick={closeMenu}
-                    className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-white/60 transition"
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition"
                   >
-                    <FaTicketAlt className="text-gray-400 text-xs" /> My Booking
+                    <FaTicketAlt className="text-sky-400 text-xs" /> My Booking
                   </NavLink>
 
-                  <div className="border-t border-gray-100 mt-1 pt-1">
+                  <div className="border-t border-white/5 mt-1 pt-1">
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer text-left"
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition cursor-pointer text-left"
                     >
-                      <FaSignOutAlt className="text-red-500 text-xs" /> Log Out
+                      <FaSignOutAlt className="text-rose-400 text-xs" /> Log Out
                     </button>
                   </div>
                 </div>
               )}
             </div>
           ) : (
-            /* Logged-out view: Sign In & Register */
-            <>
+            /* Logged-out view */
+            <div className="flex items-center gap-2 sm:gap-3">
               <NavLink
                 to="/login"
-                className={`hidden sm:inline-block font-medium ${
-                  isHome
-                    ? "text-white hover:text-blue-300"
-                    : "text-gray-700 hover:text-blue-600"
-                }`}
+                className="hidden sm:inline-block text-xs font-bold text-slate-300 hover:text-white px-3 py-2 rounded-xl transition-colors"
               >
-                Sign in
+                Sign In
               </NavLink>
 
               <NavLink
                 to="/login"
-                className="hidden sm:inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 sm:px-5 sm:py-2 rounded-xl text-sm sm:text-base font-medium transition-colors"
+                className="hidden sm:inline-block bg-sky-500 hover:bg-sky-400 text-white px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all shadow-md shadow-sky-500/25 active:scale-95"
               >
                 Register
               </NavLink>
-            </>
+            </div>
           )}
 
           {/* Mobile Menu Toggle Button */}
@@ -250,39 +280,23 @@ const NavBar = () => {
             type="button"
             onClick={() => setIsOpen(!isOpen)}
             aria-label="Toggle navigation menu"
-            className={`p-2 rounded-lg md:hidden focus:outline-none ${
-              isHome ? "text-white" : "text-gray-700"
-            }`}
+            className="p-2 rounded-xl md:hidden text-slate-300 hover:text-white hover:bg-white/5 transition cursor-pointer"
           >
-            {isOpen ? (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )}
+            {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </nav>
 
-      {/* Mobile Drawer/Dropdown Menu */}
+      {/* Mobile Drawer Menu */}
       {isOpen && (
-        <div
-          className={`md:hidden px-6 pt-3 pb-6 border-t ${
-            isHome
-              ? "bg-black/90 backdrop-blur-md text-white border-white/20"
-              : "bg-[#F8FAFC]/95 backdrop-blur-md text-gray-800 border-gray-200 shadow-xl"
-          }`}
-        >
-          <ul className="flex flex-col gap-4 font-medium">
+        <div className="md:hidden px-6 pt-3 pb-6 border-t border-white/5 bg-[#07090e]/95 backdrop-blur-2xl text-slate-200 shadow-2xl">
+          <ul className="flex flex-col gap-3.5 font-medium text-xs">
             <li>
               <NavLink
                 to="/"
                 onClick={closeMenu}
                 className={({ isActive }) =>
-                  `block py-1 ${isActive ? "text-blue-500 font-semibold" : ""}`
+                  `block py-1.5 ${isActive ? "text-sky-400 font-bold" : "text-slate-400 hover:text-white"}`
                 }
               >
                 Home
@@ -290,10 +304,10 @@ const NavBar = () => {
             </li>
             <li>
               <NavLink
-                to="/browsing"
+                to="/browse"
                 onClick={closeMenu}
                 className={({ isActive }) =>
-                  `block py-1 ${isActive ? "text-blue-500 font-semibold" : ""}`
+                  `block py-1.5 ${isActive ? "text-sky-400 font-bold" : "text-slate-400 hover:text-white"}`
                 }
               >
                 Browse
@@ -304,7 +318,7 @@ const NavBar = () => {
                 to="/booking"
                 onClick={closeMenu}
                 className={({ isActive }) =>
-                  `block py-1 ${isActive ? "text-blue-500 font-semibold" : ""}`
+                  `block py-1.5 ${isActive ? "text-sky-400 font-bold" : "text-slate-400 hover:text-white"}`
                 }
               >
                 My Booking
@@ -315,7 +329,7 @@ const NavBar = () => {
                 to="/help"
                 onClick={closeMenu}
                 className={({ isActive }) =>
-                  `block py-1 ${isActive ? "text-blue-500 font-semibold" : ""}`
+                  `block py-1.5 ${isActive ? "text-sky-400 font-bold" : "text-slate-400 hover:text-white"}`
                 }
               >
                 Help
@@ -323,21 +337,20 @@ const NavBar = () => {
             </li>
           </ul>
 
-          {/* Mobile Auth Actions */}
-          <div className="mt-5 pt-4 border-t border-gray-200/20 flex flex-col gap-3">
+          <div className="mt-5 pt-4 border-t border-white/5 flex flex-col gap-2.5">
             {isLoggedIn ? (
               <>
                 <NavLink
                   to="/profile"
                   onClick={closeMenu}
-                  className="w-full text-center py-2 rounded-xl font-medium border border-current"
+                  className="w-full text-center py-2.5 rounded-xl text-xs font-semibold bg-[#0f1420] text-white border border-white/10 transition"
                 >
                   My Profile
                 </NavLink>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="w-full text-center bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl font-medium transition-colors cursor-pointer"
+                  className="w-full text-center bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer"
                 >
                   Log Out
                 </button>
@@ -347,14 +360,14 @@ const NavBar = () => {
                 <NavLink
                   to="/login"
                   onClick={closeMenu}
-                  className="w-full text-center py-2 rounded-xl font-medium border border-current"
+                  className="w-full text-center py-2.5 rounded-xl text-xs font-semibold bg-[#0f1420] text-white border border-white/10 transition"
                 >
-                  Sign in
+                  Sign In
                 </NavLink>
                 <NavLink
                   to="/login"
                   onClick={closeMenu}
-                  className="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl font-medium"
+                  className="w-full text-center bg-sky-500 hover:bg-sky-400 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-md shadow-sky-500/25"
                 >
                   Register
                 </NavLink>

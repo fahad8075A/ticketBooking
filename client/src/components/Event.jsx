@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { FaMapMarkerAlt, FaStar, FaArrowRight } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
-// Local image imports
+// Local static image assets
 import concert from "../assets/concert.jpg";
 import tech from "../assets/tech.jpg";
 import food from "../assets/food.jpg";
@@ -34,14 +34,14 @@ const DEFAULT_FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=800&q=80";
 
 const categoryColors = {
-  MUSIC: "bg-purple-50 text-purple-700 border-purple-200/80",
-  EVENTS: "bg-blue-50 text-blue-700 border-blue-200/80",
-  SPORTS: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
-  ART: "bg-rose-50 text-rose-700 border-rose-200/80",
-  FLIGHT: "bg-sky-50 text-sky-700 border-sky-200/80",
-  BUS: "bg-amber-50 text-amber-800 border-amber-200/80",
-  TRAIN: "bg-teal-50 text-teal-700 border-teal-200/80",
-  MOVIE: "bg-indigo-50 text-indigo-700 border-indigo-200/80",
+  MUSIC: "bg-purple-500/10 text-purple-300 border-purple-500/30",
+  EVENTS: "bg-sky-500/10 text-sky-300 border-sky-500/30",
+  SPORTS: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+  ART: "bg-rose-500/10 text-rose-300 border-rose-500/30",
+  FLIGHT: "bg-cyan-500/10 text-cyan-300 border-cyan-500/30",
+  BUS: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+  TRAIN: "bg-teal-500/10 text-teal-300 border-teal-500/30",
+  MOVIE: "bg-indigo-500/10 text-indigo-300 border-indigo-500/30",
 };
 
 const containerVariants = {
@@ -66,31 +66,109 @@ const cardVariants = {
   },
 };
 
+const formatEventDate = (rawDate) => {
+  if (!rawDate) return "UPCOMING";
+  const parsed = new Date(rawDate);
+  if (isNaN(parsed.getTime())) return rawDate;
+
+  return parsed
+    .toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    })
+    .toUpperCase();
+};
+
+const extractNumericPrice = (evt) => {
+  if (!evt) return 0;
+
+  const candidateValues = [
+    evt.price,
+    evt.pricePerSeat,
+    evt.ticketPrice,
+    evt.cost,
+    evt.amount,
+    evt.pricing?.price,
+    evt.pricing?.basePrice,
+    evt.seats?.[0]?.price,
+  ];
+
+  for (const val of candidateValues) {
+    if (typeof val === "number" && !isNaN(val) && val > 0) return val;
+    if (typeof val === "string" && !isNaN(Number(val)) && Number(val) > 0) {
+      return Number(val);
+    }
+  }
+
+  return 0;
+};
+
 const resolveImage = (imgProp) => {
   if (!imgProp) return DEFAULT_FALLBACK_IMAGE;
+
   if (localImageMap[imgProp]) return localImageMap[imgProp];
-  if (typeof imgProp === "string" && (imgProp.startsWith("http") || imgProp.startsWith("/"))) {
-    return imgProp;
+
+  if (typeof imgProp === "string") {
+    const cleanKey = imgProp.replace(/\.[^/.]+$/, "").trim();
+    if (localImageMap[cleanKey]) return localImageMap[cleanKey];
+
+    if (imgProp.startsWith("http://") || imgProp.startsWith("https://")) {
+      return imgProp;
+    }
+
+    if (imgProp.includes("uploads") || imgProp.startsWith("/")) {
+      const rawBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+      const cleanPath = imgProp.startsWith("/") ? imgProp : `/${imgProp}`;
+      return `${rawBase}${cleanPath}`;
+    }
   }
+
   return DEFAULT_FALLBACK_IMAGE;
 };
 
-const EventCard = React.memo(({ item, eventId, onBook, onNavigate }) => {
-  const normalizedCategory = (item.category || "").toUpperCase();
-  const categoryTheme = categoryColors[normalizedCategory] || "bg-slate-50 text-slate-700 border-slate-200/80";
+const normalizeResponseData = (data) => {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.events)) return data.events;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.data?.events)) return data.data.events;
+  return [];
+};
+
+const EventCard = React.memo(({ item, onBook, onNavigate }) => {
+  const eventId = item._id || item.id;
+  const normalizedCategory = (item.category || "EVENTS").toUpperCase();
+  const categoryTheme =
+    categoryColors[normalizedCategory] || "bg-zinc-800 text-zinc-300 border-zinc-700";
+
+  const eventPrice = extractNumericPrice(item);
+  const eventDate = item.date || item.eventDate || item.startDate || item.createdAt;
+
+  const hasSeatData = typeof item.totalSeats === "number" || typeof item.availableSeats === "number";
+  const isSoldOut =
+    item.availableSeats === 0 ||
+    (typeof item.totalSeats === "number" &&
+      item.totalSeats <= (item.bookedSeatsCount || item.occupiedSeats?.length || 0));
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    onNavigate(eventId, item);
+  };
 
   return (
     <motion.div
-      key={eventId}
       layout
       variants={cardVariants}
       whileHover={{ y: -6 }}
-      onClick={() => onNavigate(eventId, item)}
-      className="group relative flex flex-col bg-white rounded-2xl overflow-hidden ring-1 ring-slate-900/5 shadow-sm hover:shadow-2xl hover:shadow-slate-200/80 transition-all duration-300 cursor-pointer"
+      onClick={handleClick}
+      className="group relative flex flex-col bg-zinc-900/70 border border-zinc-800/80 hover:border-zinc-700 rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-sky-500/5 transition-all duration-300 cursor-pointer backdrop-blur-xs select-none"
     >
-      <div className="relative aspect-[16/11] w-full overflow-hidden bg-slate-100">
+      {/* Card Image */}
+      <div 
+        onClick={handleClick}
+        className="relative aspect-[16/11] w-full overflow-hidden bg-zinc-950 cursor-pointer"
+      >
         <img
-          src={resolveImage(item.image)}
+          src={resolveImage(item.image || item.imageUrl)}
           alt={item.title || "Event banner"}
           loading="lazy"
           decoding="async"
@@ -98,62 +176,104 @@ const EventCard = React.memo(({ item, eventId, onBook, onNavigate }) => {
             e.target.onerror = null;
             e.target.src = DEFAULT_FALLBACK_IMAGE;
           }}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out opacity-90 pointer-events-none"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d11] via-transparent to-black/30 pointer-events-none" />
 
+        {/* Floating Badges */}
         <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none">
-          <span className="backdrop-blur-md bg-black/45 text-white font-medium text-[11px] px-2.5 py-1 rounded-md tracking-wide border border-white/10 shadow-sm">
-            {item.date || "Upcoming"}
+          <span className="backdrop-blur-md bg-black/60 text-zinc-200 font-semibold text-[10px] px-2.5 py-1 rounded-lg tracking-wider border border-white/10 shadow-sm">
+            {formatEventDate(eventDate)}
           </span>
-          {item.badge && (
-            <span className="backdrop-blur-md bg-white/95 text-slate-800 font-bold text-[10px] px-2.5 py-1 rounded-md tracking-wider uppercase shadow-sm">
-              {item.badge}
-            </span>
-          )}
+
+          <div className="flex items-center gap-1.5">
+            {hasSeatData && (
+              isSoldOut ? (
+                <span className="backdrop-blur-md bg-rose-500 text-white font-black text-[9px] px-2.5 py-0.5 rounded-lg tracking-wider uppercase shadow-sm whitespace-nowrap">
+                  NOT AVAILABLE
+                </span>
+              ) : (
+                <span className="backdrop-blur-md bg-emerald-500/20 text-emerald-300 font-bold text-[9px] px-2 py-0.5 rounded-lg border border-emerald-500/30 whitespace-nowrap">
+                  AVAILABLE
+                </span>
+              )
+            )}
+
+            {item.badge && (
+              <span className="backdrop-blur-md bg-amber-500 text-zinc-950 font-black text-[9px] px-2.5 py-0.5 rounded-lg tracking-wider uppercase shadow-sm">
+                {item.badge}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="p-5 flex flex-col flex-1 justify-between gap-5">
+      {/* Card Details */}
+      <div className="p-5 flex flex-col flex-1 justify-between gap-4">
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${categoryTheme}`}>
+          <div className="flex items-center justify-between mb-2.5">
+            <span className={`text-[10px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-md border ${categoryTheme}`}>
               {item.category || "GENERAL"}
             </span>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-50/80 border border-amber-200/60">
-              <FaStar className="w-3 h-3 text-amber-500 shrink-0" />
-              <span className="text-xs font-bold text-amber-900">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800/80 border border-zinc-700/60">
+              <FaStar className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+              <span className="text-[11px] font-bold text-zinc-200">
                 {item.rating || "4.8"}
               </span>
             </div>
           </div>
 
-          <h3 className="font-semibold text-slate-900 text-base leading-snug group-hover:text-blue-600 transition-colors duration-200 line-clamp-1">
-            {item.title || "Untitled Event"}
+          <h3 className="font-bold text-zinc-100 text-base leading-snug group-hover:text-sky-400 transition-colors duration-200 line-clamp-1">
+            {item.title || item.name || "Untitled Listing"}
           </h3>
-          <div className="flex items-center gap-1.5 text-slate-500 text-xs mt-1.5">
-            <FaMapMarkerAlt className="w-3 h-3 text-slate-400 shrink-0" />
-            <span className="truncate">{item.location || "Venue details TBA"}</span>
+
+          <div className="flex items-center gap-1.5 text-zinc-400 text-xs mt-1.5">
+            <FaMapMarkerAlt className="w-3 h-3 text-sky-400 shrink-0" />
+            <span className="truncate">{item.location || item.from || "Location TBA"}</span>
           </div>
+
+          {hasSeatData && (
+            <div className="text-[11px] text-zinc-400 mt-2">
+              {isSoldOut ? (
+                <span className="text-rose-400 font-medium">All seats booked</span>
+              ) : (
+                <span>
+                  Seats left:{" "}
+                  <strong className="text-zinc-200">
+                    {item.availableSeats ?? (item.totalSeats - (item.bookedSeatsCount || item.occupiedSeats?.length || 0))}
+                  </strong>{" "}
+                  / {item.totalSeats}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center justify-between pt-3.5 border-t border-slate-100">
+        {/* Pricing & CTA */}
+        <div className="flex items-center justify-between pt-3.5 border-t border-zinc-800/80">
           <div>
-            <span className="block text-[10px] uppercase font-semibold text-slate-400 tracking-wider">
+            <span className="block text-[9px] uppercase font-bold text-zinc-500 tracking-wider">
               Starts at
             </span>
-            <span className="text-base font-bold text-slate-900 tracking-tight">
-              ₹{Number(item.price || 0).toLocaleString("en-IN")}
+            <span className="text-base font-extrabold text-white tracking-tight">
+              ₹{Number(eventPrice).toLocaleString("en-IN")}
             </span>
           </div>
 
           <button
             type="button"
+            disabled={isSoldOut}
             onClick={(e) => onBook(item, e)}
-            className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-blue-600 active:scale-95 text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition-all duration-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl transition-all duration-200 z-10 ${
+              isSoldOut
+                ? "bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700/50"
+                : "bg-sky-500 hover:bg-sky-400 text-white cursor-pointer shadow-md shadow-sky-500/20 active:scale-95"
+            }`}
           >
-            <span>Book</span>
-            <FaArrowRight className="w-2.5 h-2.5 group-hover:translate-x-0.5 transition-transform" />
+            <span>{isSoldOut ? "Sold Out" : "Book"}</span>
+            {!isSoldOut && (
+              <FaArrowRight className="w-2.5 h-2.5 group-hover:translate-x-0.5 transition-transform" />
+            )}
           </button>
         </div>
       </div>
@@ -165,6 +285,7 @@ EventCard.displayName = "EventCard";
 
 const Event = ({ selectedCategory = "ALL" }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -177,14 +298,17 @@ const Event = ({ selectedCategory = "ALL" }) => {
         setLoading(true);
         setError(null);
 
-        const apiUrl = import.meta.env.VITE_API_URL ;
+        const rawBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+        const baseUrl = rawBase.endsWith("/api/v1") ? rawBase : `${rawBase}/api/v1`;
+        const endpoint = `${baseUrl}/events`;
+
         const token =
           localStorage.getItem("token") ||
           sessionStorage.getItem("token") ||
           localStorage.getItem("authToken") ||
           sessionStorage.getItem("authToken");
 
-        const response = await fetch(`${apiUrl}/api/v1/events`, {
+        const response = await fetch(endpoint, {
           method: "GET",
           signal: controller.signal,
           headers: {
@@ -194,14 +318,14 @@ const Event = ({ selectedCategory = "ALL" }) => {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to load events (Status: ${response.status})`);
+          throw new Error(`Failed to load events (Server returned ${response.status})`);
         }
 
         const data = await response.json();
-        setEvents(Array.isArray(data) ? data : data.events || []);
+        setEvents(normalizeResponseData(data));
       } catch (err) {
-        if (err.name !== 'AbortError') {
-          setError(err.message || 'An unexpected error occurred.');
+        if (err.name !== "AbortError") {
+          setError(err.message || "An unexpected error occurred.");
         }
       } finally {
         setLoading(false);
@@ -211,111 +335,154 @@ const Event = ({ selectedCategory = "ALL" }) => {
     fetchEvents();
 
     return () => controller.abort();
-  }, []);
+  }, [location.key]); // Re-fetches fresh seat availability when navigating back
 
   const filteredEvents = useMemo(() => {
-    const safeList = Array.isArray(events) ? events : [];
-    if (selectedCategory.toUpperCase() === "ALL") return safeList;
+    if (!Array.isArray(events)) return [];
+    if (selectedCategory.toUpperCase() === "ALL") return events;
 
     const targetCat = selectedCategory.toString().trim().toUpperCase();
-    return safeList.filter((item) => {
+    return events.filter((item) => {
       const itemCat = (item.category || "").toString().trim().toUpperCase();
       return itemCat === targetCat;
     });
   }, [events, selectedCategory]);
 
   const handleNavigate = (eventId, item) => {
-    navigate(`/event/${eventId}`, { state: { event: item } });
+    const categoryStr = (item.category || "").toString().trim().toLowerCase();
+
+    if (categoryStr.includes("train")) {
+      navigate(`/trains/${eventId}`, { state: { item } });
+    } else {
+      navigate(`/events/${eventId}`, { state: { event: item } });
+    }
   };
 
   const handleBookNow = (item, e) => {
     e.stopPropagation();
-    const eventId = item._id || item.id;
 
-    const isAuthenticated =
-      sessionStorage.getItem("isAuthenticated") === "true" ||
-      localStorage.getItem("isAuthenticated") === "true";
+    const isSoldOut =
+      item.availableSeats === 0 ||
+      (typeof item.totalSeats === "number" &&
+        item.totalSeats <= (item.bookedSeatsCount || item.occupiedSeats?.length || 0));
 
-    if (isAuthenticated) {
-      navigate(`/event/${eventId}`, { state: { event: item } });
-    } else {
-      navigate("/login", {
-        state: {
-          redirectTo: `/event/${eventId}`,
-          redirectState: { event: item },
-        },
-      });
+    if (isSoldOut) return;
+
+    const parsedPrice = extractNumericPrice(item);
+    const bookingItem = {
+      ...item,
+      id: item._id || item.id,
+      price: parsedPrice,
+      ticketPrice: parsedPrice,
+      category: item.category || "General",
+    };
+
+    // Deep identification string across title and category
+    const rawIdentifier = [
+      item.category,
+      item.type,
+      item.eventType,
+      item.title,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .trim();
+
+    // Comprehensive category routing
+    let targetRoute = "/book/general";
+
+    if (
+      rawIdentifier.includes("sport") ||
+      rawIdentifier.includes("cricket") ||
+      rawIdentifier.includes("football") ||
+      rawIdentifier.includes("soccer") ||
+      rawIdentifier.includes("stadium") ||
+      rawIdentifier.includes("match")
+    ) {
+      targetRoute = "/book/sports";
+    } else if (rawIdentifier.includes("train") || rawIdentifier.includes("rail")) {
+      targetRoute = "/book/train";
+    } else if (rawIdentifier.includes("bus") || rawIdentifier.includes("coach")) {
+      targetRoute = "/book/bus";
+    } else if (
+      rawIdentifier.includes("flight") ||
+      rawIdentifier.includes("plane") ||
+      rawIdentifier.includes("air")
+    ) {
+      targetRoute = "/book/flight";
+    } else if (
+      rawIdentifier.includes("movie") ||
+      rawIdentifier.includes("cinema") ||
+      rawIdentifier.includes("film")
+    ) {
+      targetRoute = "/book/movie";
     }
+
+    const targetState = {
+      item: bookingItem,
+      event: bookingItem,
+      ticketType: "Standard Entry",
+      ticketPrice: parsedPrice,
+      totalPrice: parsedPrice,
+      quantity: 1,
+    };
+
+    navigate(targetRoute, { state: targetState });
   };
 
   if (loading) {
     return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-3">
-        <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-slate-500 text-sm font-medium">Loading events...</p>
+      <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-3 border-sky-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-zinc-400 text-xs font-semibold tracking-wider uppercase">Loading listings...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center p-6 text-center">
-        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl max-w-md">
-          <h3 className="font-semibold text-rose-800 text-sm">Failed to retrieve events</h3>
-          <p className="text-xs text-rose-600 mt-1">{error}</p>
+      <div className="min-h-[40vh] flex flex-col items-center justify-center p-6 text-center">
+        <div className="p-5 bg-rose-500/10 border border-rose-500/20 rounded-2xl max-w-md">
+          <h3 className="font-semibold text-rose-400 text-sm">Failed to retrieve listings</h3>
+          <p className="text-xs text-rose-300/80 mt-1">{error}</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <section className="relative min-h-screen bg-[#F8FAFC] py-16 px-4 sm:px-6 lg:px-8 overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none -z-10">
-        <div
-          className="absolute inset-0 opacity-40"
-          style={{
-            backgroundImage: `radial-gradient(#CBD5E1 1.2px, transparent 1.2px)`,
-            backgroundSize: "28px 28px",
-          }}
-        />
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[52rem] h-[26rem] rounded-full bg-gradient-to-tr from-sky-200/35 via-blue-100/30 to-indigo-200/35 blur-3xl" />
-        <div className="absolute top-1/2 -left-36 w-[28rem] h-[28rem] rounded-full bg-slate-200/45 blur-3xl" />
-        <div className="absolute -bottom-40 -right-32 w-[30rem] h-[30rem] rounded-full bg-indigo-100/35 blur-3xl" />
+  if (filteredEvents.length === 0) {
+    return (
+      <div className="py-20 text-center bg-zinc-900/40 backdrop-blur-sm rounded-3xl border border-zinc-800/80 max-w-md mx-auto">
+        <h3 className="text-lg font-bold text-zinc-100">No listings found</h3>
+        <p className="text-xs sm:text-sm text-zinc-400 mt-2 px-6">
+          There are currently no tickets available for "{selectedCategory}".
+        </p>
       </div>
+    );
+  }
 
-      <div className="max-w-7xl mx-auto">
-        {filteredEvents.length === 0 ? (
-          <div className="py-24 text-center bg-white/70 backdrop-blur-sm rounded-2xl border border-slate-200/60 shadow-sm max-w-md mx-auto">
-            <h3 className="text-lg font-bold text-slate-800">No events found</h3>
-            <p className="text-sm text-slate-500 mt-2 px-6">
-              There are no events available for "{selectedCategory}".
-            </p>
-          </div>
-        ) : (
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-7"
-          >
-            <AnimatePresence mode="popLayout">
-              {filteredEvents.map((item, idx) => {
-                const eventId = item._id || item.id || `event-fallback-${idx}`;
-                return (
-                  <EventCard
-                    key={eventId}
-                    item={item}
-                    eventId={eventId}
-                    onBook={handleBookNow}
-                    onNavigate={handleNavigate}
-                  />
-                );
-              })}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </div>
-    </section>
+  return (
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
+    >
+      <AnimatePresence mode="popLayout">
+        {filteredEvents.map((item, idx) => {
+          const eventId = item._id || item.id || `event-${idx}`;
+          return (
+            <EventCard
+              key={eventId}
+              item={item}
+              onBook={handleBookNow}
+              onNavigate={handleNavigate}
+            />
+          );
+        })}
+      </AnimatePresence>
+    </motion.div>
   );
 };
 

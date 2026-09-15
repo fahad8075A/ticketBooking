@@ -1,97 +1,206 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { FaCheckCircle, FaStar, FaMapMarkerAlt, FaShareAlt, FaCalendarAlt } from "react-icons/fa";
+import {
+  Calendar,
+  MapPin,
+  Bookmark,
+  Check,
+  Compass,
+  Share2,
+  ArrowLeft,
+  ArrowRight,
+} from "lucide-react";
 import mapFallback from "../assets/map.jpg";
 
-// Category-specific metadata schema
-const CATEGORY_META = {
-  MOVIE: [
-    { label: "Duration", key: "duration" },
-    { label: "Language", key: "language" },
-    { label: "Genre", key: "genre" },
-    { label: "Theatre", key: "theatre" },
-  ],
-  FLIGHT: [
-    { label: "Airline", key: "airline" },
-    { label: "Departure", key: "departure" },
-    { label: "Arrival", key: "arrival" },
-    { label: "Travel Time", key: "travelTime" },
-  ],
-  BUS: [
-    { label: "Bus Type", key: "busType" },
-    { label: "Departure", key: "departure" },
-    { label: "Arrival", key: "arrival" },
-    { label: "Seats Left", key: "seats" },
-  ],
-  TRAIN: [
-    { label: "Train No", key: "trainNo" },
-    { label: "Coach", key: "coach" },
-    { label: "Departure", key: "departure" },
-    { label: "Platform", key: "platform" },
-  ],
-  DEFAULT: [
-    { label: "Duration", key: "duration" },
-    { label: "Age Limit", key: "age" },
-    { label: "Artists / Host", key: "artists" },
-    { label: "Capacity", key: "capacity" },
-  ],
+// Static local assets
+import foodImg from "../assets/food.jpg";
+import concertImg from "../assets/concert.jpg";
+import techImg from "../assets/tech.jpg";
+import footballImg from "../assets/football.jpg";
+import flightImg from "../assets/flight.jpg";
+import planeImg from "../assets/plane.jpg";
+import trainImg from "../assets/train.jpg";
+import train1Img from "../assets/train1.jpg";
+import eventsImg from "../assets/events.jpg";
+import singerImg from "../assets/singer.jpg";
+import swimImg from "../assets/swim.jpg";
+import tennisImg from "../assets/tennis.jpg";
+import movie1Img from "../assets/movie1.jpg";
+import movie2Img from "../assets/movie2.jpg";
+
+const DEFAULT_FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1200&q=80";
+
+const BUS_DEFAULT_IMAGE =
+  "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1200&q=80";
+
+const ASSET_MAP = {
+  bus: BUS_DEFAULT_IMAGE,
+  buses: BUS_DEFAULT_IMAGE,
+  food: foodImg,
+  concert: concertImg,
+  tech: techImg,
+  football: footballImg,
+  flight: flightImg,
+  flights: flightImg,
+  plane: planeImg,
+  train: trainImg,
+  train1: train1Img,
+  trains: trainImg,
+  event: eventsImg,
+  events: eventsImg,
+  singer: singerImg,
+  swim: swimImg,
+  tennis: tennisImg,
+  movie1: movie1Img,
+  movie2: movie2Img,
+};
+
+const resolveEventImage = (rawImage, category = "") => {
+  if (typeof rawImage === "string" && (rawImage.startsWith("http://") || rawImage.startsWith("https://"))) {
+    return rawImage;
+  }
+
+  if (typeof rawImage === "string" && (rawImage.startsWith("/") || rawImage.includes("uploads"))) {
+    const backendUrl = (
+      import.meta.env.VITE_API_URL || "http://localhost:5000"
+    ).replace(/\/api.*$/, "");
+    const cleanPath = rawImage.startsWith("/") ? rawImage : `/${rawImage}`;
+    return `${backendUrl}${cleanPath}`;
+  }
+
+  if (typeof rawImage === "string" && rawImage.trim()) {
+    const cleanKey = rawImage.replace(/\.[^/.]+$/, "").toLowerCase().trim();
+    if (ASSET_MAP[cleanKey]) return ASSET_MAP[cleanKey];
+
+    const matchedKey = Object.keys(ASSET_MAP).find((k) => cleanKey.includes(k));
+    if (matchedKey) return ASSET_MAP[matchedKey];
+  }
+
+  const cleanCategory = String(category).toLowerCase().trim();
+  if (ASSET_MAP[cleanCategory]) {
+    return ASSET_MAP[cleanCategory];
+  }
+  const matchedCatKey = Object.keys(ASSET_MAP).find((k) => cleanCategory.includes(k));
+  if (matchedCatKey) return ASSET_MAP[matchedCatKey];
+
+  return DEFAULT_FALLBACK_IMAGE;
+};
+
+const getEventFieldValue = (event, key) => {
+  if (!event) return "—";
+
+  const direct =
+    event[key] ??
+    event.metadata?.[key] ??
+    event.meta?.[key] ??
+    event.details?.[key];
+
+  if (direct !== undefined && direct !== null && direct !== "") return direct;
+
+  switch (key) {
+    case "duration":
+      return event.time || event.totalTime || "2 Days";
+    case "age":
+      return event.ageLimit || event.minAge || "ALL AGES";
+    case "lineup":
+      return event.artist || event.artists || event.organizer || "10+ ARTISTS";
+    case "capacity":
+      return event.totalSeats ? `${event.totalSeats}` : "10K";
+    default:
+      return "—";
+  }
 };
 
 const EventDetails = () => {
   const navigate = useNavigate();
   const { state } = useLocation();
   const { id } = useParams();
+
+  const [event, setEvent] = useState(state?.event || null);
+  const [loading, setLoading] = useState(!state?.event);
+  const [selectedTierIndex, setSelectedTierIndex] = useState(1);
+  const [bookmarked, setBookmarked] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const event = state?.event;
+  useEffect(() => {
+    if (!event && id) {
+      const fetchEvent = async () => {
+        try {
+          setLoading(true);
+          const API_BASE_URL =
+            import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+          const res = await fetch(`${API_BASE_URL}/events/${id}`);
+          if (!res.ok) throw new Error("Failed to fetch event");
+          const data = await res.json();
+          setEvent(data?.event || data?.data || data);
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchEvent();
+    }
+  }, [id, event]);
 
-  if (!event) {
+  if (loading) {
     return (
-      <main className="min-h-[60vh] flex flex-col items-center justify-center text-center px-4">
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900">Event Not Found</h1>
-        <p className="text-slate-500 mt-2">
-          The event details could not be loaded or the link has expired.
+      <div className="min-h-screen bg-[#0c0e12] flex flex-col items-center justify-center">
+        <div className="w-10 h-10 border-4 border-zinc-800 border-t-sky-500 rounded-full animate-spin mb-3" />
+        <p className="text-xs font-semibold text-zinc-400 tracking-wider uppercase">
+          Loading details...
         </p>
-        <button
-          onClick={() => navigate("/browse")}
-          className="mt-6 px-6 py-2.5 bg-[#0F4C81] text-white rounded-xl font-semibold hover:bg-[#09365b] transition-colors"
-        >
-          Back to Browse
-        </button>
-      </main>
+      </div>
     );
   }
 
-  // Dynamic ticket generation fallback if event lacks tiers
+  if (!event) {
+    return (
+      <div className="min-h-screen bg-[#0c0e12] flex flex-col items-center justify-center text-center px-4">
+        <h2 className="text-2xl font-bold text-zinc-100">Event Not Found</h2>
+        <button
+          onClick={() => navigate("/browse")}
+          className="mt-4 px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition shadow-md cursor-pointer"
+        >
+          Back to Browse
+        </button>
+      </div>
+    );
+  }
+
+  const basePrice = Number(
+    event.price ?? event.ticketPrice ?? event.pricePerSeat ?? 1500
+  );
+  const vipPrice = Math.round(basePrice * 1.6);
+
   const ticketTiers = event.ticketTiers || [
     {
-      title: "Standard Admission",
-      description: "Standard general entry access",
-      price: event.price || 1500,
-      perks: ["General entry access", "Standard seating/standing area", "Access to amenities"],
-      isPopular: false,
+      title: "Standard Entry",
+      subtitle: "Access To Main Area",
+      price: basePrice,
+      badge: `₹${basePrice.toFixed(2)}`,
+      perks: ["Reserved standard seat/spot", "Standard boarding pass"],
     },
     {
-      title: "VIP Experience",
-      description: "Fast-track priority pass and premium perks",
-      price: Math.round((event.price || 1500) * 1.6),
-      perks: ["Fast-track dedicated entry", "Reserved premium section", "Complimentary refreshments"],
+      title: "VIP Pass",
+      subtitle: "Priority Access",
+      price: vipPrice,
+      badge: `₹${vipPrice.toFixed(2)}`,
       isPopular: true,
+      perks: ["Priority check-in & boarding", "Complimentary snacks & water"],
     },
   ];
-
-  const metaFields = CATEGORY_META[event.category] || CATEGORY_META.DEFAULT;
 
   const handleShare = async () => {
     if (navigator.share) {
       try {
         await navigator.share({
           title: event.title,
-          text: `Check out ${event.title} on FlexiBook!`,
           url: window.location.href,
         });
       } catch {
-        // User cancelled share dialog
+        // dismissed
       }
     } else {
       navigator.clipboard.writeText(window.location.href);
@@ -100,218 +209,262 @@ const EventDetails = () => {
     }
   };
 
-  const handleSelectTicket = (ticket) => {
-    navigate("/bookings", {
-      state: {
-        event,
-        ticketType: ticket.title,
-        ticketPrice: ticket.price,
-      },
-    });
+  const handleContinueBooking = () => {
+    const chosenTicket = ticketTiers[selectedTierIndex] || ticketTiers[0];
+
+    const bookingItem = {
+      ...event,
+      id: event._id || event.id,
+      title: event.title,
+      category: event.category || "General",
+      price: chosenTicket.price,
+      ticketType: chosenTicket.title,
+    };
+
+    const isAuthenticated =
+      sessionStorage.getItem("isAuthenticated") === "true" ||
+      localStorage.getItem("isAuthenticated") === "true" ||
+      Boolean(
+        localStorage.getItem("token") ||
+          sessionStorage.getItem("token") ||
+          localStorage.getItem("authToken")
+      );
+
+    if (isAuthenticated) {
+      navigate("/book/seats", {
+        state: { item: bookingItem },
+      });
+    } else {
+      navigate("/login", {
+        state: {
+          redirectTo: "/book/seats",
+          redirectState: { item: bookingItem },
+        },
+      });
+    }
   };
 
+  const heroImage = resolveEventImage(
+    event.image || event.imageUrl,
+    event.category || event.type
+  );
+
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-      <div className="grid lg:grid-cols-3 gap-8 items-start">
-        {/* Left / Main Details Column */}
-        <div className="lg:col-span-2 space-y-8">
-          <div>
-            <img
-              src={event.image}
-              alt={event.title}
-              className="w-full h-80 sm:h-[480px] rounded-2xl object-cover shadow-sm"
-            />
+    <div className="bg-[#0b0d11] min-h-screen w-full font-sans text-zinc-200 pb-24 lg:pb-16 pt-4 lg:pt-6">
+      {/* Top Bar Back & Share */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+        <button
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900/80 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 hover:text-white transition shadow-sm cursor-pointer"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back</span>
+        </button>
 
-            <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mt-6 tracking-tight">
-              {event.title}
-            </h1>
+        {/* Mobile Share Icon in Header */}
+        <button
+          onClick={handleShare}
+          className="lg:hidden p-2 rounded-xl border border-zinc-800 bg-zinc-900/80 text-zinc-300 hover:bg-zinc-800 transition"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
+      </div>
 
-            <p className="flex items-center gap-2 text-slate-500 mt-2 font-medium text-sm sm:text-base">
-              <FaMapMarkerAlt className="text-slate-400 shrink-0" />
-              <span>{event.location}</span>
-            </p>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* Main Content Column */}
+          <div className="lg:col-span-8 space-y-6 lg:space-y-8">
+            {/* Hero Image Container: On mobile it fills the primary viewport area without extra height */}
+            <div className="relative h-[55vh] sm:h-80 md:h-[400px] lg:h-[420px] rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl bg-zinc-900">
+              <img
+                src={heroImage}
+                alt={event.title || "Event Image"}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = DEFAULT_FALLBACK_IMAGE;
+                }}
+                className="w-full h-full object-cover"
+              />
 
-            {/* Badges */}
-            <div className="flex flex-wrap gap-2.5 mt-4">
-              <span className="bg-blue-50 border border-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider">
-                {event.category}
-              </span>
-              {event.rating && (
-                <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold">
-                  <FaStar className="text-amber-500" />
-                  {event.rating}
-                </span>
-              )}
-              {event.date && (
-                <span className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold">
-                  <FaCalendarAlt className="text-emerald-500" />
-                  {event.date}
-                </span>
-              )}
-            </div>
-          </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d11] via-black/40 to-transparent" />
 
-          {/* About Section */}
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-900">About</h2>
-            <p className="text-slate-600 mt-3 leading-relaxed text-sm sm:text-base">
-              {event.description}
-            </p>
-          </div>
-
-          {/* Dynamic Category Metadata Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {metaFields.map(({ label, key }) => (
-              <div
-                key={key}
-                className="bg-white rounded-xl border-t-4 border-[#0F4C81] shadow-sm border border-slate-100 p-4 text-center"
+              <button
+                onClick={() => setBookmarked(!bookmarked)}
+                aria-label="Bookmark event"
+                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-zinc-900/80 backdrop-blur-md border border-zinc-700/60 flex items-center justify-center text-zinc-300 hover:text-white transition shadow-lg cursor-pointer"
               >
-                <p className="text-xs uppercase text-slate-500 font-semibold tracking-wider">
-                  {label}
-                </p>
-                <h3 className="text-base sm:text-lg font-bold text-[#0F4C81] mt-1.5 truncate">
-                  {event[key] || "—"}
-                </h3>
-              </div>
-            ))}
-          </div>
-
-          {/* Ticket Tier Cards */}
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4">Choose Ticket</h2>
-            <div className="grid md:grid-cols-2 gap-6">
-              {ticketTiers.map((ticket, idx) => (
-                <div
-                  key={idx}
-                  className={`rounded-2xl p-6 relative flex flex-col justify-between transition-shadow bg-white ${
-                    ticket.isPopular
-                      ? "border-2 border-[#0F4C81] shadow-lg"
-                      : "border border-slate-200 shadow-sm hover:shadow-md"
+                <Bookmark
+                  className={`w-4 h-4 ${
+                    bookmarked ? "fill-sky-400 text-sky-400" : ""
                   }`}
+                />
+              </button>
+
+              <div className="absolute bottom-5 left-5 right-5">
+                <span className="inline-block px-2.5 py-0.5 rounded-md bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold text-[10px] tracking-wider uppercase mb-2">
+                  {event.category || "EVENT / TRANSIT"}
+                </span>
+                <h1 className="text-xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white drop-shadow-sm leading-tight">
+                  {event.title}
+                </h1>
+                <p className="flex items-center gap-1.5 text-zinc-300 text-xs sm:text-sm mt-1.5 font-medium">
+                  <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span className="truncate">{event.location || "Central Station / Venue"}</span>
+                </p>
+                <p className="flex items-center gap-1.5 text-zinc-400 text-xs mt-1">
+                  <Calendar className="w-3 h-3 text-sky-400 shrink-0" />
+                  <span>{event.date || "Scheduled Today"}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Specs - Visible on all screens, compact on mobile */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+              {[
+                { label: "DURATION", val: getEventFieldValue(event, "duration") },
+                { label: "AGE LIMIT", val: getEventFieldValue(event, "age") },
+                { label: "OPERATOR", val: getEventFieldValue(event, "lineup") },
+                { label: "CAPACITY", val: getEventFieldValue(event, "capacity") },
+              ].map((spec, i) => (
+                <div
+                  key={i}
+                  className="bg-zinc-900/60 border-l-4 border-l-sky-500 border border-zinc-800/80 rounded-2xl p-3 text-center backdrop-blur-xs"
                 >
-                  {ticket.isPopular && (
-                    <span className="absolute -top-3 right-5 bg-red-600 text-white text-xs px-3 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                      Most Popular
-                    </span>
-                  )}
-
-                  <div>
-                    <div className="flex justify-between items-start gap-2">
-                      <div>
-                        <h3 className="text-xl font-bold text-[#0F4C81]">{ticket.title}</h3>
-                        <p className="text-slate-500 text-sm mt-1">{ticket.description}</p>
-                      </div>
-                      <span className="bg-orange-500 text-white px-3 py-1 rounded-lg text-sm font-bold shrink-0">
-                        ₹{ticket.price}
-                      </span>
-                    </div>
-
-                    <ul className="space-y-3 mt-6">
-                      {ticket.perks.map((perk, i) => (
-                        <li key={i} className="flex items-center gap-2.5 text-sm text-slate-700">
-                          <FaCheckCircle className="text-[#0F4C81] shrink-0" />
-                          <span>{perk}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <button
-                    onClick={() => handleSelectTicket(ticket)}
-                    className={`w-full py-3 rounded-xl font-semibold mt-8 transition-colors ${
-                      ticket.isPopular
-                        ? "bg-[#0F4C81] text-white hover:bg-[#09365b]"
-                        : "border border-[#0F4C81] text-[#0F4C81] hover:bg-[#0F4C81] hover:text-white"
-                    }`}
-                  >
-                    Select Pass
-                  </button>
+                  <p className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">
+                    {spec.label}
+                  </p>
+                  <p className="text-xs sm:text-sm font-bold text-zinc-100 mt-1 truncate">
+                    {spec.val}
+                  </p>
                 </div>
               ))}
             </div>
+
+            {/* DESKTOP-ONLY DETAILS (Hidden on Mobile to prevent long scrolls) */}
+            <div className="hidden lg:block space-y-8">
+              {/* About Section */}
+              <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-3xl p-6 backdrop-blur-xs">
+                <h2 className="text-lg font-bold text-white tracking-tight">
+                  About
+                </h2>
+                <p className="mt-2 text-zinc-400 text-sm leading-relaxed">
+                  {event.description ||
+                    "Direct ticketing, verified timings, and reserved seats with complete real-time status updates."}
+                </p>
+              </div>
+
+              {/* Ticket Selector Cards */}
+              <div className="grid grid-cols-2 gap-5">
+                {ticketTiers.map((tier, idx) => {
+                  const isSelected = selectedTierIndex === idx;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedTierIndex(idx)}
+                      className={`relative rounded-3xl p-5 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? "border-2 border-sky-500 bg-zinc-900/90 shadow-lg ring-1 ring-sky-500/30"
+                          : "border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between">
+                          <h3 className="font-bold text-white text-base">
+                            {tier.title}
+                          </h3>
+                          <span className="px-2 py-0.5 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs font-bold">
+                            {tier.badge}
+                          </span>
+                        </div>
+                        <ul className="mt-4 space-y-2">
+                          {tier.perks.map((perk, pIdx) => (
+                            <li key={pIdx} className="flex items-center gap-2 text-xs text-zinc-300">
+                              <Check className="w-3.5 h-3.5 text-sky-400" />
+                              <span>{perk}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTierIndex(idx);
+                        }}
+                        className={`w-full mt-5 py-2.5 rounded-xl text-xs font-bold transition ${
+                          isSelected
+                            ? "bg-sky-500 text-white"
+                            : "border border-zinc-700 bg-zinc-800 text-zinc-300"
+                        }`}
+                      >
+                        {isSelected ? "Selected" : "Select"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
+
+          {/* Right Sidebar (Hidden on Mobile, Sticky on Desktop) */}
+          <aside className="hidden lg:block lg:col-span-4 space-y-5 lg:sticky lg:top-6">
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl p-5 shadow-xl">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    SCHEDULED DATE
+                  </p>
+                  <p className="text-base font-extrabold text-white mt-1">
+                    {event.date || "2026-12-13"}
+                  </p>
+                </div>
+                <div className="w-8 h-8 rounded-xl bg-zinc-800 text-sky-400 flex items-center justify-center">
+                  <Calendar className="w-4 h-4" />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleContinueBooking}
+                className="w-full mt-6 py-3 px-4 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition shadow-lg cursor-pointer"
+              >
+                <span>Book Now</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-3xl overflow-hidden shadow-xl p-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                <span className="text-xs font-bold text-zinc-200">Venue / Station Map</span>
+                <Compass className="w-3.5 h-3.5 text-zinc-400" />
+              </div>
+              <img
+                src={mapFallback}
+                alt="Venue Map"
+                className="w-full h-36 object-cover rounded-xl mt-3 opacity-80"
+              />
+            </div>
+          </aside>
         </div>
+      </main>
 
-        {/* Right / Sticky Sidebar */}
-        <aside className="lg:col-span-1 lg:sticky lg:top-24 space-y-6">
-          {/* Quick Summary Booking Card */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <h3 className="text-xs text-slate-500 uppercase font-semibold tracking-wider">
-              Event Date
-            </h3>
-            <p className="text-lg font-bold text-slate-900 mt-1">{event.date}</p>
-
-            <h3 className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-5">
-              Venue
-            </h3>
-            <p className="font-medium text-slate-800 mt-1 text-sm">{event.location}</p>
-
-            <div className="pt-6 mt-6 border-t border-slate-100 flex items-baseline justify-between">
-              <span className="text-sm text-slate-500 font-medium">Starting from</span>
-              <span className="text-3xl font-extrabold text-[#0F4C81]">₹{event.price}</span>
-            </div>
-
-            <button
-              onClick={() => handleSelectTicket(ticketTiers[0])}
-              className="w-full mt-5 bg-[#0F4C81] hover:bg-[#09365b] text-white py-3.5 rounded-xl font-semibold transition-colors shadow-sm"
-            >
-              Continue Booking →
-            </button>
-          </div>
-
-          {/* Venue Map */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900">Venue Map</h3>
-              <FaMapMarkerAlt className="text-[#0F4C81]" />
-            </div>
-
-            <img src={mapFallback} alt="Venue Map" className="w-full h-48 object-cover" />
-
-            <div className="p-5">
-              <p className="text-xs text-slate-500 line-clamp-2">{event.location}</p>
-              <button
-                onClick={() =>
-                  window.open(
-                    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      event.location
-                    )}`,
-                    "_blank"
-                  )
-                }
-                className="w-full mt-4 border border-[#0F4C81] text-[#0F4C81] hover:bg-[#0F4C81] hover:text-white py-2.5 rounded-xl font-semibold text-sm transition-colors"
-              >
-                Get Directions
-              </button>
-            </div>
-          </div>
-
-          {/* Referral / Share */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-            <h3 className="text-base font-bold text-slate-900">Invite Friends</h3>
-            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Share this link with your friends to book seats together.
-            </p>
-
-            <div className="flex gap-2.5 mt-5">
-              <button
-                onClick={handleShare}
-                aria-label="Share"
-                className="w-11 h-11 border border-slate-200 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
-              >
-                <FaShareAlt className="text-sm" />
-              </button>
-              <button
-                onClick={handleShare}
-                className="flex-1 bg-[#0F4C81] hover:bg-[#09365b] text-white rounded-xl font-semibold text-sm py-2.5 transition-colors"
-              >
-                {copied ? "Copied!" : "Share Link"}
-              </button>
-            </div>
-          </div>
-        </aside>
+      {/* MOBILE STICKY BOTTOM BAR (Always gives the user instant access to Book without scrolling) */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 p-3.5 bg-zinc-950/90 backdrop-blur-lg border-t border-zinc-800/90 flex items-center justify-between z-50">
+        <div>
+          <p className="text-[10px] font-medium text-zinc-400">Starting from</p>
+          <p className="text-base font-extrabold text-white">₹{basePrice}</p>
+        </div>
+        <button
+          onClick={handleContinueBooking}
+          className="px-6 py-2.5 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-sky-500/20"
+        >
+          <span>Book Now</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
       </div>
-    </section>
+    </div>
   );
 };
 

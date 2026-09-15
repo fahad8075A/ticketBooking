@@ -1,29 +1,33 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { KeyRound, ArrowLeft, RefreshCw, CheckCircle2 } from "lucide-react";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const getApiBaseUrl = () => {
+  const raw = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+  return raw.endsWith("/api/v1") ? raw : `${raw}/api/v1`;
+};
 
 const VerifyOtpPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
   const email = location.state?.email || "";
-  
-  const [otp, setOtp] = useState(["", "", "", ""]);
+  const redirectTo = location.state?.redirectTo || "/";
+  const redirectState = location.state?.redirectState || {};
+
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef([]);
   const [timer, setTimer] = useState(60);
   const [isResending, setIsResending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Redirect back if no email was passed in routing state
   useEffect(() => {
     if (!email) {
       navigate("/login", { replace: true });
     }
   }, [email, navigate]);
 
-  // Countdown timer for resend
   useEffect(() => {
     if (timer > 0) {
       const interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
@@ -37,7 +41,7 @@ const VerifyOtpPage = () => {
     newOtp[index] = val;
     setOtp(newOtp);
 
-    if (val && index < 3) {
+    if (val && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
   };
@@ -50,32 +54,35 @@ const VerifyOtpPage = () => {
 
   const handlePaste = (e) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData("text").trim().slice(0, 4).toUpperCase();
+    const pastedData = e.clipboardData
+      .getData("text")
+      .trim()
+      .slice(0, 6)
+      .toUpperCase();
     if (!pastedData) return;
 
     const newOtp = [...otp];
     pastedData.split("").forEach((char, idx) => {
-      if (idx < 4) newOtp[idx] = char;
+      if (idx < 6) newOtp[idx] = char;
     });
     setOtp(newOtp);
-    inputRefs.current[Math.min(pastedData.length, 3)]?.focus();
+    inputRefs.current[Math.min(pastedData.length, 5)]?.focus();
   };
 
-  // Submit OTP to backend
   const handleVerify = async (e) => {
     e.preventDefault();
     setErrorMessage("");
     const enteredCode = otp.join("").trim();
 
-    if (enteredCode.length < 4) {
-      setErrorMessage("Please enter the complete 4-character code.");
+    if (enteredCode.length < 6) {
+      setErrorMessage("Please enter the complete 6-digit code.");
       return;
     }
 
     try {
       setIsVerifying(true);
 
-      const response = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+      const response = await fetch(`${getApiBaseUrl()}/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp: enteredCode }),
@@ -84,20 +91,27 @@ const VerifyOtpPage = () => {
       const resData = await response.json();
 
       if (!response.ok || !resData.success) {
-        throw new Error(resData.message || "Verification failed. Try again.");
+        throw new Error(resData.message || "Invalid code. Please check and try again.");
       }
 
-      // Store auth session details from backend response
-      const token = resData.data?.token;
-      const user = resData.data?.user || {};
+      const token = resData.data?.token || resData.token;
+      const user = resData.data?.user || resData.user || { email, role: "user" };
 
-      if (token) localStorage.setItem("authToken", token);
+      if (token) {
+        localStorage.setItem("token", token);
+        localStorage.setItem("authToken", token);
+      }
       localStorage.setItem("isAuthenticated", "true");
+      sessionStorage.setItem("isAuthenticated", "true");
       localStorage.setItem("userEmail", email);
       localStorage.setItem("userRole", user.role || "user");
+      localStorage.setItem("user", JSON.stringify(user));
 
       window.dispatchEvent(new Event("authChange"));
-      navigate("/profile", { state: { email }, replace: true });
+      window.dispatchEvent(new Event("storage"));
+
+      // Direct to Home page
+      navigate(redirectTo, { state: redirectState, replace: true });
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -105,7 +119,6 @@ const VerifyOtpPage = () => {
     }
   };
 
-  // Request backend to send a new OTP
   const handleResend = async () => {
     if (timer > 0 || isResending) return;
 
@@ -113,7 +126,7 @@ const VerifyOtpPage = () => {
       setIsResending(true);
       setErrorMessage("");
 
-      const response = await fetch(`${API_BASE_URL}/auth/resend-otp`, {
+      const response = await fetch(`${getApiBaseUrl()}/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, channel: "email" }),
@@ -125,8 +138,12 @@ const VerifyOtpPage = () => {
         throw new Error(resData.message || "Failed to resend verification code.");
       }
 
+      if (resData.devOtp) {
+        alert(`Dev Mode OTP: ${resData.devOtp}`);
+      }
+
       setTimer(60);
-      setOtp(["", "", "", ""]);
+      setOtp(["", "", "", "", "", ""]);
       inputRefs.current[0]?.focus();
     } catch (err) {
       setErrorMessage(err.message);
@@ -136,33 +153,44 @@ const VerifyOtpPage = () => {
   };
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col font-sans overflow-hidden">
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0"
-        style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?q=80&w=2070&auto=format&fit=crop')`,
-        }}
-      >
-        <div className="absolute inset-0 bg-slate-900/50 backdrop-brightness-90" />
+    <div className="relative min-h-screen w-full bg-[#07090e] text-zinc-100 flex flex-col font-sans overflow-hidden">
+      {/* Background Ambience Glow */}
+      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[50rem] h-[24rem] rounded-full bg-sky-500/10 blur-[130px]" />
+        <div className="absolute bottom-10 -right-20 w-96 h-96 rounded-full bg-blue-600/10 blur-[120px]" />
       </div>
 
       <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-[480px] bg-white/15 backdrop-blur-xl border border-white/25 rounded-3xl p-8 sm:p-10 shadow-2xl text-white text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-3">
-            Verify Your Email Address <br /> To Sign In
-          </h2>
-          <p className="text-gray-200 text-xs sm:text-sm leading-relaxed max-w-sm mx-auto mb-6 font-normal">
-            We sent a verification code to <span className="font-semibold">{email}</span>. Enter this code to continue.
-          </p>
+        <div className="w-full max-w-[460px] bg-[#0f1420] border border-zinc-800/90 rounded-[32px] p-8 sm:p-10 shadow-2xl backdrop-blur-xl flex flex-col text-center">
+          
+          {/* Header Icon & Title */}
+          <div className="mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-400/20 text-sky-400 flex items-center justify-center mx-auto mb-4 shadow-sm">
+              <KeyRound className="w-6 h-6" />
+            </div>
 
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              Verify Security Code
+            </h1>
+            <p className="text-xs text-zinc-400 mt-2 leading-relaxed max-w-sm mx-auto">
+              We sent a 6-digit confirmation code to{" "}
+              <span className="text-white font-semibold">{email}</span>.
+            </p>
+          </div>
+
+          {/* Error Banner */}
           {errorMessage && (
-            <div className="mb-6 p-3 rounded-xl bg-red-500/20 border border-red-400/40 text-red-200 text-xs text-center font-medium">
+            <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs font-medium">
               {errorMessage}
             </div>
           )}
 
+          {/* OTP Input Form */}
           <form onSubmit={handleVerify} className="space-y-6">
-            <div className="flex justify-center items-center gap-3 sm:gap-4" onPaste={handlePaste}>
+            <div
+              className="flex justify-center items-center gap-2 sm:gap-3"
+              onPaste={handlePaste}
+            >
               {otp.map((char, index) => (
                 <input
                   key={index}
@@ -173,8 +201,12 @@ const VerifyOtpPage = () => {
                   disabled={isVerifying}
                   onChange={(e) => handleChange(index, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(index, e)}
-                  placeholder="-"
-                  className="w-12 h-14 sm:w-14 sm:h-16 text-center text-lg sm:text-xl font-bold uppercase rounded-xl bg-white/15 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white/25 transition shadow-inner disabled:opacity-50"
+                  placeholder="•"
+                  className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-mono font-black uppercase rounded-2xl bg-[#07090e] border transition-all duration-200 outline-none ${
+                    char
+                      ? "border-sky-400 text-white shadow-md shadow-sky-500/10 bg-[#0c101a]"
+                      : "border-zinc-800 text-zinc-300 placeholder-zinc-700 focus:border-sky-500"
+                  } disabled:opacity-40`}
                 />
               ))}
             </div>
@@ -182,37 +214,53 @@ const VerifyOtpPage = () => {
             <button
               type="submit"
               disabled={isVerifying}
-              className="w-full bg-[#c67d1f] hover:bg-[#b06f19] active:scale-[0.99] text-white font-medium text-sm py-3.5 rounded-xl transition shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full h-12 bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-white font-bold text-xs uppercase tracking-wider rounded-2xl transition-all shadow-lg shadow-sky-500/25 active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
-              {isVerifying ? "Verifying..." : "Verify email"}
+              {isVerifying ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Verifying Code...</span>
+                </>
+              ) : (
+                <>
+                  <span>Verify & Go Home</span>
+                  <CheckCircle2 className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
 
-          <div className="mt-6 text-xs text-gray-200 leading-relaxed max-w-xs mx-auto">
+          {/* Resend Actions */}
+          <div className="mt-7 text-xs text-zinc-400">
             {timer > 0 ? (
               <p>
-                Didn't get an email? Check your spam folder or request another code in{" "}
-                <span className="font-semibold text-white">{timer} seconds</span>
+                Resend code in{" "}
+                <span className="font-mono font-bold text-sky-400">{timer}s</span>
               </p>
             ) : (
               <button
+                type="button"
                 onClick={handleResend}
                 disabled={isResending}
-                className="text-amber-400 hover:text-amber-300 font-semibold underline transition cursor-pointer disabled:opacity-50"
+                className="text-sky-400 hover:text-sky-300 font-bold transition cursor-pointer disabled:opacity-50"
               >
-                {isResending ? "Resending..." : "Resend Verification Code"}
+                {isResending ? "Sending code..." : "Resend Verification Code"}
               </button>
             )}
           </div>
 
-          <div className="mt-6">
+          {/* Back to Login */}
+          <div className="mt-6 pt-5 border-t border-zinc-800/80">
             <button
+              type="button"
               onClick={() => navigate("/login")}
-              className="text-sm font-semibold text-white hover:text-gray-200 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white font-semibold transition cursor-pointer"
             >
-              Back To Sign-In
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Login</span>
             </button>
           </div>
+
         </div>
       </main>
     </div>

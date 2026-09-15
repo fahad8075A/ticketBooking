@@ -2,11 +2,7 @@ import { Category } from './category.model.js';
 
 export const getAllCategories = async (onlyActive = true) => {
   const filter = onlyActive ? { isActive: true } : {};
-  return await Category.find(filter).sort({ createdAt: 1 }).lean();
-};
-
-export const getCategoryById = async (id) => {
-  return await Category.findById(id).lean();
+  return await Category.find(filter).sort({ label: 1 }).lean();
 };
 
 export const createCategory = async (data) => {

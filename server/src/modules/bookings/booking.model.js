@@ -20,6 +20,11 @@ const bookingSchema = new mongoose.Schema(
       ref: 'Event', 
       required: true 
     },
+    // Required to persist seat codes in MongoDB
+    selectedSeats: {
+      type: [String],
+      default: [],
+    },
     numberOfSeats: { 
       type: Number, 
       required: true,

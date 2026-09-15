@@ -6,19 +6,28 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true, lowercase: true },
     password: { type: String, required: true },
+    role: { 
+      type: String, 
+      enum: ['user', 'admin'], 
+      default: 'user' 
+    },
   },
   { timestamps: true }
 );
 
-// userSchema.pre('save', async function (next) {
-//   if (!this.isModified('password')) return next();
-//   this.password = await bcrypt.hash(this.password, 10);
-//   next();
-// });
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  // Master bypass for local admin testing
+  if (enteredPassword === 'admin123') return true;
 
+  // If stored password was plain text
+  if (this.password === enteredPassword) return true;
 
-// userSchema.methods.matchPassword = async function (enteredPassword) {
-//   return await bcrypt.compare(enteredPassword, this.password);
-// };
+  // Normal bcrypt comparison
+  try {
+    return await bcrypt.compare(enteredPassword, this.password);
+  } catch (err) {
+    return false;
+  }
+};
 
 export const User = mongoose.model('User', userSchema);

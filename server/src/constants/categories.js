@@ -4,5 +4,7 @@ export const CATEGORY_TYPES = [
   'TRAIN',
   'BUS',
   'MUSIC',
-  'SPORTS'
+  'SPORTS',
+  'EVENT',
+  'EVENTS',
 ];
