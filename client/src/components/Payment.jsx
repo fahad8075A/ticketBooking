@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   FaCreditCard,
@@ -7,9 +7,16 @@ import {
   FaLock,
   FaCheckCircle,
 } from "react-icons/fa";
-import { Sparkles, Calendar, ArrowLeft } from "lucide-react";
+import { Sparkles, Calendar, ArrowLeft, Loader2 } from "lucide-react";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
 
-// Local image imports for reliable asset mapping
+// Local image imports
 import concert from "../assets/concert.jpg";
 import tech from "../assets/tech.jpg";
 import food from "../assets/food.jpg";
@@ -61,14 +68,84 @@ const resolveImage = (rawImg) => {
   return DEFAULT_FALLBACK_IMAGE;
 };
 
+// Initialize Stripe outside component render
+const stripePromise = loadStripe(
+  import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||
+    "pk_test_51UFpUpKLlp9IUc8lsy8KQKZYW5SvM08Fp4vzf07YqCwjgB6uTz4eLjdabkXJLjCD0bER8ZqQhl4BuMQZC22leGUV00SWd339Ku"
+);
+
+// Inner Stripe Card Form
+const StripeCardSection = ({ total, onSuccessfulPayment, onError, disabled }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleCardSubmit = async (e) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setSubmitting(true);
+    onError("");
+
+    try {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        redirect: "if_required",
+      });
+
+      if (error) {
+        onError(error.message || "Card verification failed.");
+      } else if (paymentIntent && paymentIntent.status === "succeeded") {
+        await onSuccessfulPayment(paymentIntent.id);
+      } else {
+        onError(`Payment incomplete. Status: ${paymentIntent?.status || "Unknown"}`);
+      }
+    } catch (err) {
+      onError(err.message || "An unexpected error occurred during card processing.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleCardSubmit} className="space-y-4">
+      <div className="p-4 rounded-xl bg-[#0b0e17] border border-zinc-800">
+        <PaymentElement
+          options={{
+            layout: "tabs",
+            theme: "night",
+          }}
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={!stripe || submitting || disabled}
+        className="w-full h-12 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-white font-black text-xs sm:text-sm tracking-wide shadow-lg shadow-sky-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+      >
+        {submitting ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Processing via Stripe...</span>
+          </>
+        ) : (
+          <>
+            <FaLock className="text-xs" />
+            <span>Pay ₹{total.toLocaleString("en-IN")} with Card</span>
+            <FaArrowRight className="text-xs" />
+          </>
+        )}
+      </button>
+    </form>
+  );
+};
+
 const Payment = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 1. Resolve event/item data
   const event = location.state?.event || location.state?.item || {};
 
-  // 2. Resolve seat quantity
   const quantity = Number(
     location.state?.quantity ||
     location.state?.numberOfSeats ||
@@ -76,7 +153,6 @@ const Payment = () => {
     1
   );
 
-  // 3. Price calculation
   const rawTotal = Number(
     location.state?.total ??
     location.state?.totalPrice ??
@@ -99,7 +175,6 @@ const Payment = () => {
   const tax = Number(location.state?.tax || 0);
   const total = rawTotal + (serviceFee + tax > 0 ? serviceFee + tax : 0);
 
-  // 4. Passenger / User Details
   let savedUser = {};
   try {
     savedUser = JSON.parse(
@@ -119,85 +194,142 @@ const Payment = () => {
   );
 
   const [paymentMethod, setPaymentMethod] = useState("upi");
-
-  // UPI
   const [upiId, setUpiId] = useState("");
 
-  // Card
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [expiry, setExpiry] = useState("");
-  const [cvv, setCvv] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [createdBooking, setCreatedBooking] = useState(null);
+  const [fetchingSecret, setFetchingSecret] = useState(false);
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Persistence to DB
-  const processBooking = async () => {
+  const rawBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+  const baseUrl = rawBase.endsWith("/api/v1") ? rawBase : `${rawBase}/api/v1`;
+
+  const token =
+    localStorage.getItem("token") ||
+    sessionStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    sessionStorage.getItem("authToken");
+
+  // Step 1: Ensure a database booking record exists
+  const persistBooking = async (status = "pending", paymentId = null) => {
+    const eventId = event?._id || event?.id || location.state?.eventId;
+    if (!eventId) {
+      throw new Error("Event or vehicle ID is missing. Please reselect your booking.");
+    }
+
+    const cleanSeats = Array.isArray(location.state?.selectedSeats)
+      ? location.state.selectedSeats.map((s) => String(s).trim().toUpperCase())
+      : [];
+
+    const payload = {
+      userId: savedUser._id || savedUser.id || null,
+      customerName: customerName.trim() || "Passenger",
+      customerEmail: customerEmail.trim() || "passenger@flexibook.com",
+      eventId,
+      numberOfSeats: quantity,
+      selectedSeats: cleanSeats,
+      totalPrice: total,
+      status,
+      paymentMethod,
+      paymentId: paymentId || (paymentMethod === "upi" ? `UPI-${Date.now()}` : null),
+    };
+
+    const response = await fetch(`${baseUrl}/bookings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || data.error || "Failed to persist booking record.");
+    }
+
+    const record = data?.booking || data?.data || data;
+    setCreatedBooking(record);
+    return record;
+  };
+
+  // Step 2: Fetch PaymentIntent clientSecret matching your backend service contract
+  useEffect(() => {
+    if (paymentMethod === "card" && !clientSecret && total > 0) {
+      const fetchSecret = async () => {
+        setFetchingSecret(true);
+        setError("");
+        try {
+          const bookingRecord = createdBooking?._id ? createdBooking : await persistBooking("pending");
+          const targetBookingId = bookingRecord?._id || bookingRecord?.id;
+
+          const res = await fetch(`${baseUrl}/payments/create-intent`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              bookingId: targetBookingId,
+              amount: total,
+              currency: "inr",
+            }),
+          });
+
+          const json = await res.json();
+          if (!res.ok || !json.success) {
+            throw new Error(json.message || "Failed to initialize payment gateway.");
+          }
+
+          setClientSecret(json.data.clientSecret);
+        } catch (err) {
+          console.error("Stripe initialization error:", err);
+          setError(err.message || "Failed to contact payment gateway.");
+        } finally {
+          setFetchingSecret(false);
+        }
+      };
+
+      fetchSecret();
+    }
+  }, [paymentMethod, clientSecret, total]);
+
+  // Step 3: Verify Stripe payment on backend before finalizing client view
+  const handleStripeSuccess = async (paymentIntentId) => {
     setLoading(true);
     setError("");
 
     try {
-      const eventId = event?._id || event?.id || location.state?.eventId;
-
-      if (!eventId) {
-        throw new Error("Event or vehicle ID is missing. Please reselect your booking.");
-      }
-
-      const token =
-        localStorage.getItem("token") ||
-        sessionStorage.getItem("token") ||
-        localStorage.getItem("authToken") ||
-        sessionStorage.getItem("authToken");
-
-      const cleanSeats = Array.isArray(location.state?.selectedSeats)
-        ? location.state.selectedSeats.map((s) => String(s).trim().toUpperCase())
-        : [];
-
-      const rawBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
-      const baseUrl = rawBase.endsWith("/api/v1") ? rawBase : `${rawBase}/api/v1`;
-
-      const payload = {
-        userId: savedUser._id || savedUser.id || null,
-        customerName: customerName.trim() || "Passenger",
-        customerEmail: customerEmail.trim() || "passenger@flexibook.com",
-        eventId,
-        numberOfSeats: quantity,
-        selectedSeats: cleanSeats,
-        totalPrice: total,
-        status: "confirmed",
-      };
-
-      const response = await fetch(`${baseUrl}/bookings`, {
+      const verifyRes = await fetch(`${baseUrl}/payments/verify`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ paymentIntentId }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || data.error || "Failed to finalize booking.");
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.success) {
+        throw new Error(verifyData.message || "Failed to verify transaction with backend.");
       }
-
-      const confirmedData = data?.booking || data?.data || data;
 
       navigate("/booking", {
         replace: true,
-        state: { booking: confirmedData },
+        state: { booking: createdBooking },
       });
     } catch (err) {
-      console.error("Payment finalization error:", err);
-      setError(err.message || "An error occurred while finalizing your booking.");
+      console.error("Payment confirmation error:", err);
+      setError(err.message || "Payment verification failed.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePayment = async () => {
+  // Step 4: Handle UPI submission
+  const handleUpiPayment = async () => {
     setError("");
 
     if (!customerName.trim()) {
@@ -210,49 +342,29 @@ const Payment = () => {
       return;
     }
 
-    if (paymentMethod === "upi") {
-      if (!upiId.trim()) {
-        setError("Please enter your UPI Virtual Payment Address.");
-        return;
-      }
-      if (!upiId.includes("@")) {
-        setError("UPI ID must follow the standard handle format (e.g. name@okaxis).");
-        return;
-      }
-      await processBooking();
+    if (!upiId.trim() || !upiId.includes("@")) {
+      setError("Please enter a valid UPI address (e.g. name@okhdfcbank).");
       return;
     }
 
-    if (paymentMethod === "card") {
-      if (!cardName.trim()) {
-        setError("Please enter the name printed on the card.");
-        return;
-      }
-
-      const cleanCard = cardNumber.replace(/\s/g, "");
-      if (cleanCard.length !== 16 || !/^\d+$/.test(cleanCard)) {
-        setError("Card number must be exactly 16 numeric digits.");
-        return;
-      }
-
-      if (!expiry.trim()) {
-        setError("Please enter expiry date (MM/YY).");
-        return;
-      }
-
-      if (!cvv.trim() || !/^\d{3}$/.test(cvv.trim())) {
-        setError("CVV must be 3 digits.");
-        return;
-      }
-
-      await processBooking();
+    setLoading(true);
+    try {
+      const finalBooking = await persistBooking("confirmed");
+      navigate("/booking", {
+        replace: true,
+        state: { booking: finalBooking },
+      });
+    } catch (err) {
+      setError(err.message || "An error occurred while confirming your UPI booking.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="relative min-h-screen bg-[#07090e] text-zinc-100 font-sans py-8 sm:py-12">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Top Header */}
+        {/* Header */}
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/20 text-sky-400 text-[10px] font-extrabold uppercase tracking-widest mb-3">
             <Sparkles className="w-3 h-3 text-sky-400" />
@@ -271,7 +383,7 @@ const Payment = () => {
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-[1.8fr_1.2fr] gap-8 items-start">
           
-          {/* Left: Input Form */}
+          {/* Left Form */}
           <div className="rounded-3xl p-6 sm:p-7 bg-[#0f1420] border border-zinc-800/90 shadow-2xl">
             <h2 className="text-xs font-bold text-sky-400 uppercase tracking-widest mb-4">
               1. Passenger Contact Information
@@ -313,7 +425,7 @@ const Payment = () => {
 
             <hr className="border-zinc-800 mb-6" />
 
-            {/* Payment Method Switcher */}
+            {/* Method Switcher */}
             <h2 className="text-xs font-bold text-sky-400 uppercase tracking-widest mb-4">
               2. Select Payment Method
             </h2>
@@ -347,11 +459,11 @@ const Payment = () => {
                 }`}
               >
                 <FaCreditCard className="text-xs" />
-                <span>Credit / Debit Card</span>
+                <span>Stripe Card Checkout</span>
               </button>
             </div>
 
-            {/* UPI Form */}
+            {/* UPI Option */}
             {paymentMethod === "upi" && (
               <div className="space-y-4">
                 <div>
@@ -372,129 +484,87 @@ const Payment = () => {
                     Supports Google Pay, PhonePe, Paytm, and all bank UPI handles.
                   </p>
                 </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    className="w-full sm:w-1/3 h-12 rounded-xl border border-zinc-800 hover:border-zinc-700 bg-[#0b0e17] text-zinc-300 hover:text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={handleUpiPayment}
+                    className="w-full sm:w-2/3 h-12 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-white font-black text-xs sm:text-sm tracking-wide shadow-lg shadow-sky-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <FaLock className="text-xs" />
+                    <span>{loading ? "Confirming Booking..." : `Pay ₹${total.toLocaleString("en-IN")}`}</span>
+                    <FaArrowRight className="text-xs" />
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Card Form */}
+            {/* Stripe Card Option */}
             {paymentMethod === "card" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Name on Card
-                  </label>
-                  <input
-                    type="text"
-                    value={cardName}
-                    onChange={(e) => {
-                      setCardName(e.target.value);
-                      setError("");
-                    }}
-                    placeholder="Name as printed"
-                    className="w-full h-11 px-3.5 bg-[#0b0e17] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-500 outline-none focus:border-sky-500 transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Card Number
-                  </label>
-                  <input
-                    type="text"
-                    value={cardNumber}
-                    maxLength="19"
-                    onChange={(e) => {
-                      let val = e.target.value.replace(/\D/g, "").slice(0, 16);
-                      val = val.replace(/(.{4})/g, "$1 ").trim();
-                      setCardNumber(val);
-                      setError("");
-                    }}
-                    placeholder="0000 0000 0000 0000"
-                    className="w-full h-11 px-3.5 bg-[#0b0e17] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-500 outline-none focus:border-sky-500 transition font-mono"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
-                      Expiry Date
-                    </label>
-                    <input
-                      type="text"
-                      value={expiry}
-                      maxLength="5"
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/\D/g, "").slice(0, 4);
-                        if (val.length >= 3) {
-                          val = val.slice(0, 2) + "/" + val.slice(2);
-                        }
-                        setExpiry(val);
-                        setError("");
-                      }}
-                      placeholder="MM/YY"
-                      className="w-full h-11 px-3.5 bg-[#0b0e17] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-500 outline-none focus:border-sky-500 transition font-mono"
-                    />
+              <div>
+                {fetchingSecret ? (
+                  <div className="py-12 flex flex-col items-center justify-center gap-3 text-zinc-400">
+                    <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
+                    <span className="text-xs">Preparing secure Stripe checkout...</span>
                   </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1.5">
-                      CVV / CVC
-                    </label>
-                    <input
-                      type="password"
-                      value={cvv}
-                      maxLength="3"
-                      onChange={(e) => {
-                        setCvv(e.target.value.replace(/\D/g, "").slice(0, 3));
-                        setError("");
-                      }}
-                      placeholder="***"
-                      className="w-full h-11 px-3.5 bg-[#0b0e17] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-500 outline-none focus:border-sky-500 transition font-mono"
+                ) : clientSecret ? (
+                  <Elements
+                    stripe={stripePromise}
+                    options={{
+                      clientSecret,
+                      appearance: {
+                        theme: "night",
+                        variables: {
+                          colorPrimary: "#38bdf8",
+                          colorBackground: "#0b0e17",
+                          colorText: "#ffffff",
+                          colorDanger: "#f43f5e",
+                        },
+                      },
+                    }}
+                  >
+                    <StripeCardSection
+                      total={total}
+                      onSuccessfulPayment={handleStripeSuccess}
+                      onError={(msg) => setError(msg)}
+                      disabled={loading || !customerName.trim() || !customerEmail.trim()}
                     />
+                  </Elements>
+                ) : (
+                  <div className="text-xs text-rose-400 bg-rose-950/30 p-3.5 rounded-xl border border-rose-900/50">
+                    Unable to load Stripe. Verify your backend server is online at {baseUrl}.
                   </div>
-                </div>
+                )}
               </div>
             )}
 
-            {/* Error Message */}
+            {/* Error Display */}
             {error && (
               <div className="mt-4 p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs font-medium">
                 {error}
               </div>
             )}
 
-            {/* Simulation Notice */}
+            {/* Security Notice */}
             <div className="mt-6 p-4 rounded-xl bg-sky-500/10 border border-sky-400/20 flex items-start gap-3 text-xs">
               <FaShieldAlt className="text-sky-400 text-base shrink-0 mt-0.5" />
               <p className="text-zinc-400 leading-relaxed">
-                256-bit encrypted simulation. Confirming this transaction creates and records your digital ticket directly into the database.
+                Transactions processed securely via Stripe. Your card credentials are encrypted and never stored on our servers.
               </p>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-6 mt-4 border-t border-zinc-800">
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                className="w-full sm:w-1/3 h-12 rounded-xl border border-zinc-800 hover:border-zinc-700 bg-[#0b0e17] text-zinc-300 hover:text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handlePayment}
-                className="w-full sm:w-2/3 h-12 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-white font-black text-xs sm:text-sm tracking-wide shadow-lg shadow-sky-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <FaLock className="text-xs" />
-                <span>{loading ? "Confirming Booking..." : `Pay ₹${total.toLocaleString("en-IN")}`}</span>
-                <FaArrowRight className="text-xs" />
-              </button>
             </div>
           </div>
 
-          {/* Right: Order Summary */}
+          {/* Right Summary */}
           <div className="rounded-3xl p-6 sm:p-7 bg-[#0f1420] border border-zinc-800/90 shadow-2xl">
             <div className="flex items-center justify-between mb-5 pb-3 border-b border-zinc-800">
               <h2 className="text-base sm:text-lg font-bold text-white">
@@ -505,7 +575,6 @@ const Payment = () => {
               </span>
             </div>
 
-            {/* Resolved Event Thumbnail */}
             {(event?.title || event?.name) && (
               <div className="flex gap-3.5 items-center mb-6 pb-5 border-b border-zinc-800">
                 <img
@@ -534,7 +603,6 @@ const Payment = () => {
               </div>
             )}
 
-            {/* Breakdown */}
             <div className="space-y-3 text-xs text-zinc-400 mb-6 pb-5 border-b border-zinc-800">
               <div className="flex justify-between">
                 <span>Base Fare ({quantity}x)</span>
@@ -556,7 +624,6 @@ const Payment = () => {
               )}
             </div>
 
-            {/* Total */}
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">

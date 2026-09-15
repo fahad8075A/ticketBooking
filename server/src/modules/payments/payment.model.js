@@ -1,43 +1,44 @@
-import mongoose from "mongoose";
+import mongoose from 'express'; // or 'mongoose'
+import { Schema, model } from 'mongoose';
 
-const paymentSchema = new mongoose.Schema(
+const paymentSchema = new Schema(
   {
     bookingId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Booking",
+      type: Schema.Types.ObjectId,
+      ref: 'Booking',
       required: true,
-    },
-    amount: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    currency: {
-      type: String,
-      required: true,
-      uppercase: true,
-      trim: true,
+      index: true,
     },
     paymentIntentId: {
       type: String,
       required: true,
-      unique: true, // 
-      index: true,
+      unique: true,
+      trim: true,
+    },
+    amount: {
+      type: Number,
+      required: true,
+    },
+    currency: {
+      type: String,
+      default: 'inr',
+      lowercase: true,
     },
     status: {
       type: String,
-      required: true,
-      enum: ["pending", "succeeded", "failed", "refunded"],
-      default: "pending",
-      
+      enum: ['pending', 'processing', 'succeeded', 'completed', 'canceled', 'failed'],
+      default: 'pending',
     },
-    paymentMethod: {
+    paymentMethodId: {
       type: String,
-      default: "stripe",
+      default: null,
+    },
+    rawResponse: {
+      type: Object,
+      default: null,
     },
   },
   { timestamps: true }
 );
 
-export const Payment = mongoose.model("Payment", paymentSchema);
-export default Payment;
+export default model('Payment', paymentSchema);
