@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Rounded Square / Outer Badge -->
+  <rect 
+    x="6" 
+    y="6" 
+    width="88" 
+    height="88" 
+    rx="28" 
+    fill="#081b29" 
+    stroke="#00a3ff" 
+    stroke-width="5" 
+  />
+
+  <!-- Main Smooth 4-Point Star -->
+  <path 
+    d="M 54 28 
+       C 54 44, 56 46, 72 46 
+       C 56 46, 54 48, 54 64 
+       C 54 48, 52 46, 36 46 
+       C 52 46, 54 44, 54 28 Z" 
+    stroke="#00d2ff" 
+    stroke-width="7" 
+    stroke-linejoin="round" 
+    stroke-linecap="round"
+  />
+
+  <!-- Plus Symbol (Top Right) -->
+  <line x1="68" y1="34" x2="68" y2="44" stroke="#00d2ff" stroke-width="6" stroke-linecap="round" />
+  <line x1="63" y1="39" x2="73" y2="39" stroke="#00d2ff" stroke-width="6" stroke-linecap="round" />
+
+  <!-- Circle Dot (Bottom Left) -->
+  <circle cx="41" cy="62" r="5" stroke="#00d2ff" stroke-width="5" />
+</svg>
