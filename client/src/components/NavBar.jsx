@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { FaUser, FaTicketAlt, FaSignOutAlt } from "react-icons/fa";
-import { Sparkles, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import profile from "../assets/profile.jpg";
 
 const NavBar = () => {
@@ -124,14 +124,12 @@ const NavBar = () => {
     <header className="sticky top-0 left-0 w-full z-50 bg-[#07090e]/95 backdrop-blur-md border-b border-white/[0.04] font-sans transition-all duration-300">
       <nav className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-8 py-3">
         {/* Brand Logo */}
+        {/* Brand Logo */}
         <NavLink
           to="/"
           onClick={closeMenu}
-          className="flex items-center gap-2 group cursor-pointer"
+          className="group cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-400/30 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform shadow-[0_0_12px_rgba(56,189,248,0.2)]">
-            <Sparkles className="w-4 h-4" />
-          </div>
           <span className="text-xl sm:text-2xl font-black tracking-tight text-white group-hover:text-sky-300 transition-colors">
             Flexi<span className="text-[#38bdf8]">Book</span>
           </span>
@@ -143,10 +141,9 @@ const NavBar = () => {
             <NavLink
               to="/"
               className={({ isActive }) =>
-                `transition-all duration-200 pb-1 ${
-                  isActive
-                    ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
-                    : "text-slate-400 hover:text-slate-200"
+                `transition-all duration-200 pb-1 ${isActive
+                  ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
+                  : "text-slate-400 hover:text-slate-200"
                 }`
               }
             >
@@ -158,10 +155,9 @@ const NavBar = () => {
             <NavLink
               to="/browse"
               className={({ isActive }) =>
-                `transition-all duration-200 pb-1 ${
-                  isActive
-                    ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
-                    : "text-slate-400 hover:text-slate-200"
+                `transition-all duration-200 pb-1 ${isActive
+                  ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
+                  : "text-slate-400 hover:text-slate-200"
                 }`
               }
             >
@@ -173,10 +169,9 @@ const NavBar = () => {
             <NavLink
               to="/booking"
               className={({ isActive }) =>
-                `transition-all duration-200 pb-1 ${
-                  isActive
-                    ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
-                    : "text-slate-400 hover:text-slate-200"
+                `transition-all duration-200 pb-1 ${isActive
+                  ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
+                  : "text-slate-400 hover:text-slate-200"
                 }`
               }
             >
@@ -188,10 +183,9 @@ const NavBar = () => {
             <NavLink
               to="/help"
               className={({ isActive }) =>
-                `transition-all duration-200 pb-1 ${
-                  isActive
-                    ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
-                    : "text-slate-400 hover:text-slate-200"
+                `transition-all duration-200 pb-1 ${isActive
+                  ? "text-[#38bdf8] font-black border-b-2 border-[#38bdf8] shadow-[0_1px_10px_rgba(56,189,248,0.4)]"
+                  : "text-slate-400 hover:text-slate-200"
                 }`
               }
             >
@@ -214,9 +208,8 @@ const NavBar = () => {
                 <img
                   src={profile}
                   alt="Profile"
-                  className={`w-9 h-9 sm:w-9.5 sm:h-9.5 rounded-full object-cover ${
-                    isProfileMenuOpen ? "ring-2 ring-sky-400 ring-offset-2 ring-offset-[#07090e]" : ""
-                  }`}
+                  className={`w-9 h-9 sm:w-9.5 sm:h-9.5 rounded-full object-cover ${isProfileMenuOpen ? "ring-2 ring-sky-400 ring-offset-2 ring-offset-[#07090e]" : ""
+                    }`}
                 />
               </button>
 
