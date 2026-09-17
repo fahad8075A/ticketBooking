@@ -1,4 +1,8 @@
+import React from "react";
 import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+
+// Theme Context Provider
+import { ThemeProvider } from "./context/ThemeContext";
 
 // Layouts
 import MainLayout from "./layouts/MainLayout";
@@ -18,7 +22,7 @@ import TrainDetails from "./components/booking/TrainDetails";
 import BusSeatBooking from "./components/booking/BusSeatBooking";
 import FlightSeatBooking from "./components/booking/FlightSeatBooking";
 import MovieSeatBooking from "./components/booking/MovieSeatBooking";
-import SportsSeatBooking from "./components/booking/SportsSeatBooking"; // Added
+import SportsSeatBooking from "./components/booking/SportsSeatBooking";
 import GeneralTicketBooking from "./components/booking/GeneralTicketBooking";
 import BookingSeatPage from "./pages/BookingSeatPage";
 
@@ -128,64 +132,66 @@ const AdminProtectedRoute = () => {
 
 const App = () => {
   return (
-    <Routes>
-      {/* 1. Public & Client Routes */}
-      <Route path="/" element={<MainLayout />}>
-        <Route index element={<Home />} />
-        <Route path="browse" element={<Browse />} />
-        <Route path="browsing" element={<Browse />} />
+    <ThemeProvider>
+      <Routes>
+        {/* 1. Public & Client Routes */}
+        <Route path="/" element={<MainLayout />}>
+          <Route index element={<Home />} />
+          <Route path="browse" element={<Browse />} />
+          <Route path="browsing" element={<Browse />} />
 
-        {/* Dynamic Event Details */}
-        <Route path="event/:id" element={<EventDetails />} />
-        <Route path="events/:id" element={<EventDetails />} />
+          {/* Dynamic Event Details */}
+          <Route path="event/:id" element={<EventDetails />} />
+          <Route path="events/:id" element={<EventDetails />} />
 
-        {/* Dedicated Transport & Entertainment Seat Routes */}
-        <Route path="trains/:id" element={<TrainDetails />} />
-        <Route path="train/:id" element={<TrainDetails />} />
-        <Route path="book/train" element={<TrainDetails />} />
-        <Route path="book/bus" element={<BusSeatBooking />} />
-        <Route path="book/flight" element={<FlightSeatBooking />} />
-        <Route path="book/movie" element={<MovieSeatBooking />} />
-        <Route path="book/sports" element={<SportsSeatBooking />} /> {/* Added */}
-        <Route path="book/general" element={<GeneralTicketBooking />} />
-        <Route path="book/seats" element={<BookingSeatPage />} />
-        <Route path="book-seats" element={<BookingSeatPage />} /> {/* Route alias */}
+          {/* Dedicated Transport & Entertainment Seat Routes */}
+          <Route path="trains/:id" element={<TrainDetails />} />
+          <Route path="train/:id" element={<TrainDetails />} />
+          <Route path="book/train" element={<TrainDetails />} />
+          <Route path="book/bus" element={<BusSeatBooking />} />
+          <Route path="book/flight" element={<FlightSeatBooking />} />
+          <Route path="book/movie" element={<MovieSeatBooking />} />
+          <Route path="book/sports" element={<SportsSeatBooking />} />
+          <Route path="book/general" element={<GeneralTicketBooking />} />
+          <Route path="book/seats" element={<BookingSeatPage />} />
+          <Route path="book-seats" element={<BookingSeatPage />} />
 
-        {/* Info & Auth */}
-        <Route path="help" element={<Help />} />
-        <Route path="login" element={<LoginPage />} />
-        <Route path="verify-otp" element={<VerifyOtpPage />} />
+          {/* Info & Auth */}
+          <Route path="help" element={<Help />} />
+          <Route path="login" element={<LoginPage />} />
+          <Route path="verify-otp" element={<VerifyOtpPage />} />
 
-        {/* Protected Checkout & User Pages */}
-        <Route element={<UserProtectedRoute />}>
-          <Route path="bookings" element={<MyBooking />} />
-          <Route path="booking" element={<MyBookingPage />} />
-          <Route path="my-bookings" element={<MyBooking />} />
-          <Route path="payment" element={<Payment />} />
-          <Route path="confirmation" element={<BookingConfirmation />} />
-          <Route path="confi" element={<BookingConfirmation />} /> {/* Backward compatibility */}
-          <Route path="profile" element={<ProfilePage />} />
+          {/* Protected Checkout & User Pages */}
+          <Route element={<UserProtectedRoute />}>
+            <Route path="bookings" element={<MyBooking />} />
+            <Route path="booking" element={<MyBookingPage />} />
+            <Route path="my-bookings" element={<MyBooking />} />
+            <Route path="payment" element={<Payment />} />
+            <Route path="confirmation" element={<BookingConfirmation />} />
+            <Route path="confi" element={<BookingConfirmation />} />
+            <Route path="profile" element={<ProfilePage />} />
+          </Route>
         </Route>
-      </Route>
 
-      {/* 2. Admin Login */}
-      <Route path="/admin/login" element={<AdminLogin />} />
+        {/* 2. Admin Login */}
+        <Route path="/admin/login" element={<AdminLogin />} />
 
-      {/* 3. Protected Admin Portal */}
-      <Route element={<AdminProtectedRoute />}>
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<DashboardOverview />} />
-          <Route path="users" element={<UsersManagement />} />
-          <Route path="bookings" element={<BookingsManagement />} />
-          <Route path="events" element={<EventsManagement />} />
-          <Route path="categories" element={<CategoriesManagement />} />
-          <Route path="payments" element={<PaymentsManagement />} />
+        {/* 3. Protected Admin Portal */}
+        <Route element={<AdminProtectedRoute />}>
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<DashboardOverview />} />
+            <Route path="users" element={<UsersManagement />} />
+            <Route path="bookings" element={<BookingsManagement />} />
+            <Route path="events" element={<EventsManagement />} />
+            <Route path="categories" element={<CategoriesManagement />} />
+            <Route path="payments" element={<PaymentsManagement />} />
+          </Route>
         </Route>
-      </Route>
 
-      {/* Catch-all Fallback */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Catch-all Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </ThemeProvider>
   );
 };
 

@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { FaPlane, FaTrain, FaTicketAlt, FaBus, FaFilm } from "react-icons/fa";
 import { MdEvent } from "react-icons/md";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { useTheme } from "../context/ThemeContext";
 
-// Local static asset imports
 import flightFallback from "../assets/flight.jpg";
 import trainFallback from "../assets/train.jpg";
 import eventsFallback from "../assets/events.jpg";
@@ -23,18 +22,6 @@ const ASSET_IMAGE_MAP = {
   events: eventsFallback,
 };
 
-const ICON_MAP = {
-  plane: <FaPlane className="w-3.5 h-3.5 text-sky-400" />,
-  train: <FaTrain className="w-3.5 h-3.5 text-sky-400" />,
-  event: <MdEvent className="w-3.5 h-3.5 text-sky-400" />,
-  events: <MdEvent className="w-3.5 h-3.5 text-sky-400" />,
-  flights: <FaPlane className="w-3.5 h-3.5 text-sky-400" />,
-  trains: <FaTrain className="w-3.5 h-3.5 text-sky-400" />,
-  bus: <FaBus className="w-3.5 h-3.5 text-sky-400" />,
-  movie: <FaFilm className="w-3.5 h-3.5 text-sky-400" />,
-  default: <FaTicketAlt className="w-3.5 h-3.5 text-sky-400" />,
-};
-
 const DEFAULT_DESCRIPTIONS = {
   flights: "Global destinations at your fingertips.",
   trains: "Discover scenic routes with every journey.",
@@ -44,51 +31,39 @@ const DEFAULT_DESCRIPTIONS = {
 };
 
 const resolveCategoryImage = (imageField, normalizedKey) => {
-  if (!imageField) {
-    return ASSET_IMAGE_MAP[normalizedKey] || flightFallback;
-  }
-
-  if (imageField.startsWith("http://") || imageField.startsWith("https://")) {
-    return imageField;
-  }
-
-  if (imageField.startsWith("/")) {
-    return imageField;
-  }
-
+  if (!imageField) return ASSET_IMAGE_MAP[normalizedKey] || flightFallback;
+  if (imageField.startsWith("http://") || imageField.startsWith("https://")) return imageField;
+  if (imageField.startsWith("/")) return imageField;
   const cleanKey = imageField.replace(/\.[^/.]+$/, "").toLowerCase().trim();
-  if (ASSET_IMAGE_MAP[cleanKey]) {
-    return ASSET_IMAGE_MAP[cleanKey];
+  return ASSET_IMAGE_MAP[cleanKey] || ASSET_IMAGE_MAP[normalizedKey] || flightFallback;
+};
+
+const getCategoryIcon = (key) => {
+  const props = { className: "w-3.5 h-3.5" };
+  switch (key) {
+    case "flight":
+    case "flights":
+    case "plane":
+      return <FaPlane {...props} />;
+    case "train":
+    case "trains":
+      return <FaTrain {...props} />;
+    case "bus":
+      return <FaBus {...props} />;
+    case "movie":
+      return <FaFilm {...props} />;
+    case "event":
+    case "events":
+      return <MdEvent {...props} />;
+    default:
+      return <FaTicketAlt {...props} />;
   }
-
-  return ASSET_IMAGE_MAP[normalizedKey] || flightFallback;
-};
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.1,
-    },
-  },
-};
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 25 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.5,
-      ease: [0.16, 1, 0.3, 1],
-    },
-  },
 };
 
 const BrowseCategories = () => {
   const navigate = useNavigate();
+  const { isDarkMode } = useTheme();
+
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -98,11 +73,7 @@ const BrowseCategories = () => {
       try {
         setLoading(true);
         const res = await fetch(`${API_BASE_URL}/categories`);
-
-        if (!res.ok) {
-          throw new Error(`Failed to load categories (Status: ${res.status})`);
-        }
-
+        if (!res.ok) throw new Error(`Failed to load categories (Status: ${res.status})`);
         const data = await res.json();
         setCategories(Array.isArray(data) ? data : data.data || []);
       } catch (err) {
@@ -111,78 +82,89 @@ const BrowseCategories = () => {
         setLoading(false);
       }
     };
-
     fetchCategories();
   }, []);
 
   return (
-    <section className="relative w-full bg-[#050913] text-white py-14 sm:py-20 border-b border-slate-800/80 overflow-hidden font-sans">
-      {/* Background Radial Glow Matching Hero */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-sky-500/10 rounded-full blur-[140px] pointer-events-none" />
-
+    <section
+      className={`relative w-full py-12 sm:py-16 md:py-24 border-b transition-colors duration-300 font-sans select-none overflow-hidden ${
+        isDarkMode
+          ? "bg-zinc-950 text-zinc-100 border-zinc-800"
+          : "bg-zinc-50 text-zinc-900 border-zinc-200"
+      }`}
+    >
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-          className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 sm:mb-12 gap-4"
-        >
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 sm:mb-12 gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/20 text-sky-400 text-[10px] sm:text-[11px] font-extrabold uppercase tracking-[0.25em] mb-3">
-              <Sparkles className="w-3 h-3 text-sky-400" />
-              <span>EXPLORE EXPERIENCES</span>
-            </div>
-            <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-white">
-              Browse Categories
+            <span
+              className={`text-xs font-semibold uppercase tracking-wider ${
+                isDarkMode ? "text-zinc-400" : "text-zinc-600"
+              }`}
+            >
+              Categories
+            </span>
+            <h2
+              className={`text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight mt-1 ${
+                isDarkMode ? "text-white" : "text-zinc-950"
+              }`}
+            >
+              Browse by transport & events
             </h2>
-            <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-xl leading-relaxed">
-              Find premium flights, high-speed rail, interstate buses, and trending events.
+            <p
+              className={`text-xs sm:text-sm mt-1 max-w-xl ${
+                isDarkMode ? "text-zinc-400" : "text-zinc-600"
+              }`}
+            >
+              Select an option below to explore real-time availability and routes.
             </p>
           </div>
 
           <button
+            type="button"
             onClick={() => navigate("/browsing")}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900/80 hover:bg-sky-500/20 text-slate-300 hover:text-sky-300 border border-slate-800 hover:border-sky-500/50 backdrop-blur-md text-xs font-bold transition-all shadow-sm cursor-pointer whitespace-nowrap active:scale-95"
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap active:scale-95 shrink-0 ${
+              isDarkMode
+                ? "bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200"
+                : "bg-white hover:bg-zinc-100 border-zinc-200 text-zinc-800 shadow-sm"
+            }`}
           >
-            <span>See All</span>
+            <span>View all</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
-        </motion.div>
+        </div>
 
-        {/* Skeleton Loading State */}
+        {/* Loading skeleton */}
         {loading && (
-          <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 overflow-x-hidden">
+          <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 overflow-hidden">
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="w-[82vw] sm:w-auto shrink-0 h-80 sm:h-96 md:h-[400px] rounded-3xl p-2.5 bg-gradient-to-b from-white/10 to-transparent border border-white/10 animate-pulse"
-              >
-                <div className="w-full h-full bg-slate-900/60 rounded-2xl" />
-              </div>
+                className={`h-72 sm:h-80 md:h-96 w-[80vw] sm:w-auto shrink-0 rounded-2xl border animate-pulse ${
+                  isDarkMode
+                    ? "bg-zinc-900 border-zinc-800"
+                    : "bg-zinc-200/70 border-zinc-200"
+                }`}
+              />
             ))}
           </div>
         )}
 
-        {/* Error Fallback */}
+        {/* Error state */}
         {error && !loading && (
-          <div className="p-6 rounded-3xl bg-rose-950/30 border border-rose-800/40 text-center max-w-xl mx-auto backdrop-blur-md">
-            <p className="text-rose-400 font-medium text-xs sm:text-sm">
-              Unable to load categories: {error}
-            </p>
+          <div
+            className={`p-6 rounded-2xl border text-center max-w-xl mx-auto ${
+              isDarkMode
+                ? "bg-zinc-900 border-red-900/40 text-red-400"
+                : "bg-red-50 border-red-200 text-red-600"
+            }`}
+          >
+            <p className="text-xs sm:text-sm font-medium">Unable to load categories: {error}</p>
           </div>
         )}
 
-        {/* Categories Grid / Slider */}
+        {/* Responsive Grid / Horizontal Snap Reel */}
         {!loading && !error && (
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="flex sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 overflow-x-auto sm:overflow-visible no-scrollbar snap-x snap-mandatory pb-4 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0"
-          >
+          <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 overflow-x-auto sm:overflow-visible no-scrollbar pb-3 sm:pb-0 snap-x snap-mandatory -mx-4 px-4 sm:mx-0 sm:px-0">
             {categories.map((item, index) => {
               const normalizedKey = (
                 item.code ||
@@ -193,27 +175,16 @@ const BrowseCategories = () => {
                 ""
               ).toLowerCase();
 
-              const displayName =
-                item.name || item.title || item.label || item.code;
-
-              const finalImageSrc = resolveCategoryImage(
-                item.imageUrl || item.image,
-                normalizedKey
-              );
-
-              const iconLookupKey = (
-                item.iconName ||
-                item.iconKey ||
-                normalizedKey
-              ).toLowerCase();
-              const categoryIcon = ICON_MAP[iconLookupKey] || ICON_MAP.default;
+              const displayName = item.name || item.title || item.label || item.code;
+              const finalImageSrc = resolveCategoryImage(item.imageUrl || item.image, normalizedKey);
+              const categoryIcon = getCategoryIcon(normalizedKey);
 
               const badgeText =
                 item.badge ||
                 (normalizedKey === "flights" || normalizedKey === "flight"
-                  ? "MOST POPULAR"
+                  ? "Popular"
                   : normalizedKey === "trains" || normalizedKey === "train"
-                  ? "FAST ROUTE"
+                  ? "High Speed"
                   : null);
 
               const descriptionText =
@@ -222,73 +193,66 @@ const BrowseCategories = () => {
                 item.desc ||
                 item.description ||
                 DEFAULT_DESCRIPTIONS[normalizedKey] ||
-                `Discover options in ${displayName}`;
+                `Explore options in ${displayName}`;
 
               return (
-                <motion.div
+                <div
                   key={item._id || item.id || item.code || index}
-                  variants={cardVariants}
-                  whileHover={{ y: -6 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
                   onClick={() => navigate(`/browsing?category=${normalizedKey}`)}
-                  className={`group relative h-80 sm:h-96 md:h-[400px] rounded-3xl p-2 sm:p-2.5 bg-gradient-to-b from-white/15 via-white/5 to-transparent border border-white/10 hover:border-sky-500/50 backdrop-blur-xl shadow-2xl shadow-black/80 transition-all duration-300 cursor-pointer shrink-0 snap-center w-[82vw] sm:w-auto ${
-                    index === 2 ? "sm:col-span-2 lg:col-span-1" : ""
-                  }`}
+                  className={`group relative h-72 sm:h-80 md:h-96 rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer snap-center w-[80vw] max-w-[320px] sm:max-w-none sm:w-auto shrink-0 ${
+                    isDarkMode
+                      ? "border-zinc-800 bg-zinc-900 hover:border-zinc-700"
+                      : "border-zinc-200 bg-white hover:border-zinc-300 shadow-sm"
+                  } ${index === 2 ? "sm:col-span-2 lg:col-span-1" : ""}`}
                 >
-                  {/* Inner Image Wrapper */}
-                  <div className="relative w-full h-full rounded-2xl overflow-hidden bg-slate-950">
-                    <img
-                      src={finalImageSrc}
-                      alt={displayName}
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = ASSET_IMAGE_MAP[normalizedKey] || flightFallback;
-                      }}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out select-none"
-                      draggable={false}
-                    />
+                  <img
+                    src={finalImageSrc}
+                    alt={displayName}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = ASSET_IMAGE_MAP[normalizedKey] || flightFallback;
+                    }}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                    draggable={false}
+                  />
 
-                    {/* Dark Lighting Gradient */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#050913] via-[#050913]/40 to-transparent pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
 
-                    {/* Top Floating Badge */}
-                    {badgeText && (
-                      <div className="absolute top-3 left-3 z-10">
-                        <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold tracking-wider uppercase text-white bg-sky-500/90 backdrop-blur-md shadow-md border border-sky-400/30">
-                          {badgeText}
-                        </span>
+                  {badgeText && (
+                    <div className="absolute top-3.5 left-3.5 z-10">
+                      <span className="px-2.5 py-0.5 rounded text-[10px] sm:text-[11px] font-medium bg-black/60 text-zinc-200 border border-white/15 backdrop-blur-sm">
+                        {badgeText}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 md:p-6 z-10 flex flex-col justify-end text-left">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-black/60 text-white border border-white/10 backdrop-blur-sm flex items-center justify-center shrink-0">
+                        {categoryIcon}
                       </div>
-                    )}
+                      <h3 className="text-lg sm:text-xl font-semibold text-white tracking-tight">
+                        {displayName}
+                      </h3>
+                    </div>
 
-                    {/* Bottom Content Area */}
-                    <div className="absolute inset-x-0 bottom-0 p-5 sm:p-6 z-10 flex flex-col justify-end">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <div className="w-7 h-7 rounded-lg bg-slate-900/80 border border-slate-700/80 backdrop-blur-md flex items-center justify-center shrink-0">
-                          {categoryIcon}
-                        </div>
-                        <h3 className="text-lg sm:text-xl font-bold tracking-tight text-white group-hover:text-sky-300 transition-colors">
-                          {displayName}
-                        </h3>
-                      </div>
+                    <p className="text-xs text-zinc-300 line-clamp-1 font-normal mb-2.5">
+                      {descriptionText}
+                    </p>
 
-                      <p className="text-slate-300 text-xs sm:text-sm line-clamp-1 font-normal">
-                        {descriptionText}
-                      </p>
-
-                      <div className="mt-3.5 flex items-center justify-between pt-3 border-t border-white/10">
-                        <span className="text-[11px] font-semibold text-slate-400 group-hover:text-slate-200 transition-colors">
-                          Explore Tickets
-                        </span>
-                        <div className="w-6 h-6 rounded-full bg-white/10 group-hover:bg-sky-500 flex items-center justify-center transition-all duration-300 text-white">
-                          <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                        </div>
+                    <div className="flex items-center justify-between pt-2.5 border-t border-white/10">
+                      <span className="text-[11px] sm:text-xs font-medium text-zinc-300 group-hover:text-white transition-colors">
+                        Browse listings
+                      </span>
+                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/15 group-hover:bg-white group-hover:text-zinc-950 flex items-center justify-center transition-colors text-white">
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                       </div>
                     </div>
                   </div>
-                </motion.div>
+                </div>
               );
             })}
-          </motion.div>
+          </div>
         )}
       </div>
     </section>
