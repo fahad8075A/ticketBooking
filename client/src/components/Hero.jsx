@@ -148,21 +148,8 @@ const Hero = () => {
       }`}
     >
       {/* Theme Toggle Button */}
-      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-          className={`p-2 sm:p-2.5 rounded-full border transition-colors cursor-pointer ${
-            isDarkMode
-              ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800"
-              : "bg-white border-zinc-200 text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 shadow-sm"
-          }`}
-        >
-          {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-      </div>
-
+     
+      
       {/* Subtle Glow */}
       <div
         className={`absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-64 sm:h-96 blur-3xl pointer-events-none transition-opacity duration-300 ${
