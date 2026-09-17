@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FaMapMarkerAlt, FaStar, FaArrowRight } from "react-icons/fa";
+import { FaMapMarkerAlt, FaStar, FaArrowRight, FaFire } from "react-icons/fa";
 import { useNavigate, useLocation } from "react-router-dom";
 
 // Local static image assets
@@ -160,12 +160,12 @@ const EventCard = React.memo(({ item, onBook, onNavigate }) => {
       variants={cardVariants}
       whileHover={{ y: -6 }}
       onClick={handleClick}
-      className="group relative flex flex-col bg-zinc-900/70 border border-zinc-800/80 hover:border-zinc-700 rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-sky-500/5 transition-all duration-300 cursor-pointer backdrop-blur-xs select-none"
+      className="group relative flex flex-col bg-zinc-900/70 border border-zinc-800/80 hover:border-zinc-700 rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-sky-500/5 transition-all duration-300 cursor-pointer backdrop-blur-xs select-none shrink-0 w-[78%] max-w-[285px] snap-center sm:w-auto sm:max-w-none"
     >
-      {/* Card Image */}
+      {/* Card Image: 3/4 portrait ratio on mobile for app look, 16/11 on tablet/desktop */}
       <div 
         onClick={handleClick}
-        className="relative aspect-[16/11] w-full overflow-hidden bg-zinc-950 cursor-pointer"
+        className="relative aspect-[3/4] sm:aspect-[16/11] w-full overflow-hidden bg-zinc-950 cursor-pointer"
       >
         <img
           src={resolveImage(item.image || item.imageUrl)}
@@ -178,7 +178,7 @@ const EventCard = React.memo(({ item, onBook, onNavigate }) => {
           }}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out opacity-90 pointer-events-none"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0d11] via-transparent to-black/30 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-transparent to-black/30 pointer-events-none" />
 
         {/* Floating Badges */}
         <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none">
@@ -187,10 +187,15 @@ const EventCard = React.memo(({ item, onBook, onNavigate }) => {
           </span>
 
           <div className="flex items-center gap-1.5">
+            {/* Trending Fire Badge (Mobile-focused spotlight icon) */}
+            <div className="w-6 h-6 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center text-orange-400 border border-white/10">
+              <FaFire className="w-3 h-3" />
+            </div>
+
             {hasSeatData && (
               isSoldOut ? (
                 <span className="backdrop-blur-md bg-rose-500 text-white font-black text-[9px] px-2.5 py-0.5 rounded-lg tracking-wider uppercase shadow-sm whitespace-nowrap">
-                  NOT AVAILABLE
+                  SOLD OUT
                 </span>
               ) : (
                 <span className="backdrop-blur-md bg-emerald-500/20 text-emerald-300 font-bold text-[9px] px-2 py-0.5 rounded-lg border border-emerald-500/30 whitespace-nowrap">
@@ -209,13 +214,13 @@ const EventCard = React.memo(({ item, onBook, onNavigate }) => {
       </div>
 
       {/* Card Details */}
-      <div className="p-5 flex flex-col flex-1 justify-between gap-4">
+      <div className="p-4 sm:p-5 flex flex-col flex-1 justify-between gap-3 sm:gap-4">
         <div>
-          <div className="flex items-center justify-between mb-2.5">
-            <span className={`text-[10px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-md border ${categoryTheme}`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md border ${categoryTheme}`}>
               {item.category || "GENERAL"}
             </span>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-800/80 border border-zinc-700/60">
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800/80 border border-zinc-700/60">
               <FaStar className="w-2.5 h-2.5 text-amber-400 shrink-0" />
               <span className="text-[11px] font-bold text-zinc-200">
                 {item.rating || "4.8"}
@@ -223,9 +228,15 @@ const EventCard = React.memo(({ item, onBook, onNavigate }) => {
             </div>
           </div>
 
-          <h3 className="font-bold text-zinc-100 text-base leading-snug group-hover:text-sky-400 transition-colors duration-200 line-clamp-1">
+          <h3 className="font-bold text-zinc-100 text-sm sm:text-base leading-snug group-hover:text-sky-400 transition-colors duration-200 line-clamp-1">
             {item.title || item.name || "Untitled Listing"}
           </h3>
+
+          {item.description && (
+            <p className="text-xs text-zinc-400 line-clamp-2 mt-1 leading-relaxed sm:hidden">
+              {item.description}
+            </p>
+          )}
 
           <div className="flex items-center gap-1.5 text-zinc-400 text-xs mt-1.5">
             <FaMapMarkerAlt className="w-3 h-3 text-sky-400 shrink-0" />
@@ -250,12 +261,12 @@ const EventCard = React.memo(({ item, onBook, onNavigate }) => {
         </div>
 
         {/* Pricing & CTA */}
-        <div className="flex items-center justify-between pt-3.5 border-t border-zinc-800/80">
+        <div className="flex items-center justify-between pt-3 border-t border-zinc-800/80">
           <div>
             <span className="block text-[9px] uppercase font-bold text-zinc-500 tracking-wider">
               Starts at
             </span>
-            <span className="text-base font-extrabold text-white tracking-tight">
+            <span className="text-sm sm:text-base font-extrabold text-white tracking-tight">
               ₹{Number(eventPrice).toLocaleString("en-IN")}
             </span>
           </div>
@@ -264,7 +275,7 @@ const EventCard = React.memo(({ item, onBook, onNavigate }) => {
             type="button"
             disabled={isSoldOut}
             onClick={(e) => onBook(item, e)}
-            className={`inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl transition-all duration-200 z-10 ${
+            className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all duration-200 z-10 ${
               isSoldOut
                 ? "bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700/50"
                 : "bg-sky-500 hover:bg-sky-400 text-white cursor-pointer shadow-md shadow-sky-500/20 active:scale-95"
@@ -335,7 +346,7 @@ const Event = ({ selectedCategory = "ALL" }) => {
     fetchEvents();
 
     return () => controller.abort();
-  }, [location.key]); // Re-fetches fresh seat availability when navigating back
+  }, [location.key]);
 
   const filteredEvents = useMemo(() => {
     if (!Array.isArray(events)) return [];
@@ -377,7 +388,6 @@ const Event = ({ selectedCategory = "ALL" }) => {
       category: item.category || "General",
     };
 
-    // Deep identification string across title and category
     const rawIdentifier = [
       item.category,
       item.type,
@@ -389,7 +399,6 @@ const Event = ({ selectedCategory = "ALL" }) => {
       .toLowerCase()
       .trim();
 
-    // Comprehensive category routing
     let targetRoute = "/book/general";
 
     if (
@@ -463,26 +472,36 @@ const Event = ({ selectedCategory = "ALL" }) => {
   }
 
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
-    >
-      <AnimatePresence mode="popLayout">
-        {filteredEvents.map((item, idx) => {
-          const eventId = item._id || item.id || `event-${idx}`;
-          return (
-            <EventCard
-              key={eventId}
-              item={item}
-              onBook={handleBookNow}
-              onNavigate={handleNavigate}
-            />
-          );
-        })}
-      </AnimatePresence>
-    </motion.div>
+    <div className="w-full">
+      {/* Mobile Horizontal Snap Swiper + Desktop Grid */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-6 sm:overflow-visible"
+      >
+        <AnimatePresence mode="popLayout">
+          {filteredEvents.map((item, idx) => {
+            const eventId = item._id || item.id || `event-${idx}`;
+            return (
+              <EventCard
+                key={eventId}
+                item={item}
+                onBook={handleBookNow}
+                onNavigate={handleNavigate}
+              />
+            );
+          })}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Subtle Mobile Swipe Indicator Indicator */}
+      <div className="flex sm:hidden justify-center items-center gap-1.5 mt-2">
+        <span className="w-4 h-1 rounded-full bg-sky-500/80" />
+        <span className="w-1.5 h-1 rounded-full bg-zinc-700" />
+        <span className="w-1.5 h-1 rounded-full bg-zinc-700" />
+      </div>
+    </div>
   );
 };
 
